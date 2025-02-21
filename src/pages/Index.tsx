@@ -1,10 +1,12 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { JobScrapingService } from "@/services/JobScrapingService";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
 import { toast } from "sonner";
+import type { JobPosting, ExtractedKeyword } from "@/custom/supabase-types";
 
 const extractKeywords = (text: string): string[] => {
   // Simple keyword extraction for now - split by spaces and filter
@@ -27,10 +29,30 @@ const Index = () => {
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Subscribe to real-time updates
+  // Subscribe to real-time updates for job postings and keywords
   useEffect(() => {
-    const channel = supabase
-      .channel('db-changes')
+    const jobPostingsChannel = supabase
+      .channel('job-postings')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'job_postings'
+        },
+        (payload) => {
+          const posting = payload.new as JobPosting;
+          if (posting.status === 'processed') {
+            toast.success(`Job posting processed: ${posting.title}`);
+          } else if (posting.status === 'failed') {
+            toast.error(`Failed to process job posting: ${posting.title}`);
+          }
+        }
+      )
+      .subscribe();
+
+    const keywordsChannel = supabase
+      .channel('extracted-keywords')
       .on(
         'postgres_changes',
         {
@@ -39,7 +61,7 @@ const Index = () => {
           table: 'extracted_keywords'
         },
         (payload) => {
-          const newKeyword = payload.new.keyword;
+          const newKeyword = (payload.new as ExtractedKeyword).keyword;
           setKeywords(prev => {
             if (!prev.includes(newKeyword)) {
               const updatedKeywords = [...prev, newKeyword];
@@ -53,7 +75,8 @@ const Index = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(jobPostingsChannel);
+      supabase.removeChannel(keywordsChannel);
     };
   }, []);
 
@@ -61,28 +84,25 @@ const Index = () => {
     try {
       setIsProcessing(true);
 
-      // First, get a list of job sources
+      // Get job sources
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
         .select('*');
 
       if (sourcesError) throw sourcesError;
+      if (!sources?.length) {
+        toast.error('No job sources configured');
+        return;
+      }
 
-      // For demo purposes, use the first source
-      const sourceId = sources[0].id;
-
-      // Trigger the scraping function
-      const response = await supabase.functions.invoke('scrape-jobs', {
-        body: { source_id: sourceId }
-      });
-
-      if (response.error) throw response.error;
-
-      // Extract initial keywords
+      // Initial keywords extraction
       const extractedKeywords = extractKeywords(jobDescription);
       setKeywords(extractedKeywords);
       setBooleanQuery(generateBooleanQuery(extractedKeywords));
 
+      // Process job posting
+      await JobScrapingService.processJobPosting(sources[0].base_url, sources[0].id);
+      
       toast.success('Job processing started. Keywords will update in real-time.');
 
     } catch (error) {
