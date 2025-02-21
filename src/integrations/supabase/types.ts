@@ -9,7 +9,129 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      extracted_keywords: {
+        Row: {
+          category: string | null
+          created_at: string
+          frequency: number
+          id: string
+          job_posting_id: string
+          keyword: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          frequency?: number
+          id?: string
+          job_posting_id: string
+          keyword: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          frequency?: number
+          id?: string
+          job_posting_id?: string
+          keyword?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "extracted_keywords_job_posting_id_fkey"
+            columns: ["job_posting_id"]
+            isOneToOne: false
+            referencedRelation: "job_postings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_job_posting"
+            columns: ["job_posting_id"]
+            isOneToOne: false
+            referencedRelation: "job_postings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_postings: {
+        Row: {
+          company: string | null
+          created_at: string
+          description: string | null
+          external_id: string | null
+          id: string
+          location: string | null
+          posting_url: string
+          processed_at: string | null
+          source_id: string
+          status: Database["public"]["Enums"]["job_posting_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          description?: string | null
+          external_id?: string | null
+          id?: string
+          location?: string | null
+          posting_url: string
+          processed_at?: string | null
+          source_id: string
+          status?: Database["public"]["Enums"]["job_posting_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          description?: string | null
+          external_id?: string | null
+          id?: string
+          location?: string | null
+          posting_url?: string
+          processed_at?: string | null
+          source_id?: string
+          status?: Database["public"]["Enums"]["job_posting_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_source"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_postings_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_sources: {
+        Row: {
+          base_url: string
+          created_at: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          base_url: string
+          created_at?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          base_url?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -18,7 +140,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      job_posting_status: "pending" | "processed" | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
