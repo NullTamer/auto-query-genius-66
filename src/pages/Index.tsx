@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
@@ -5,13 +6,13 @@ import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
 import { toast } from "sonner";
-import { Loader2, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import type { JobPosting, ExtractedKeyword } from "@/custom/supabase-types";
 
 const generateBooleanQuery = (keywords: Array<{ keyword: string; category?: string; frequency: number }>) => {
   if (keywords.length === 0) return "";
 
+  // Sort keywords by frequency and category
   const sortedKeywords = [...keywords].sort((a, b) => {
     if (b.frequency !== a.frequency) return b.frequency - a.frequency;
     if (a.category === 'skill' && b.category !== 'skill') return -1;
@@ -19,13 +20,16 @@ const generateBooleanQuery = (keywords: Array<{ keyword: string; category?: stri
     return 0;
   });
 
+  // Separate skills and requirements
   const skills = sortedKeywords.filter(k => k.category === 'skill').map(k => k.keyword);
   const requirements = sortedKeywords.filter(k => k.category === 'requirement').map(k => k.keyword);
 
+  // Build query parts
   const essentialSkills = skills.slice(0, 3).join(" AND ");
   const optionalSkills = skills.slice(3).join(" OR ");
   const requirementsClauses = requirements.map(req => `"${req}"`).join(" OR ");
 
+  // Combine parts
   const parts = [];
   if (essentialSkills) parts.push(`(${essentialSkills})`);
   if (optionalSkills) parts.push(`(${optionalSkills})`);
@@ -39,10 +43,10 @@ const Index = () => {
   const [keywords, setKeywords] = useState<Array<{ keyword: string; category?: string; frequency: number }>>([]);
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [hasError, setHasError] = useState(false);
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
+  // Subscribe to real-time updates for job postings and keywords
   useEffect(() => {
     const jobPostingsChannel = supabase
       .channel('job-postings')
@@ -101,30 +105,13 @@ const Index = () => {
     };
   }, [currentJobId]);
 
-  const handleRetry = useCallback(async () => {
-    if (!currentJobId) return;
-
-    setIsProcessing(true);
-    setHasError(false);
-    
-    try {
-      await JobScrapingService.retryJobPosting(currentJobId);
-      toast.success('Retrying job processing...');
-    } catch (error) {
-      console.error('Error retrying job processing:', error);
-      toast.error('Failed to retry job processing');
-      setIsProcessing(false);
-      setHasError(true);
-    }
-  }, [currentJobId]);
-
   const handleGenerateQuery = useCallback(async () => {
     try {
       setIsProcessing(true);
-      setHasError(false);
       setKeywords([]);
       setBooleanQuery("");
 
+      // Get job sources
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
         .select('*');
@@ -135,7 +122,8 @@ const Index = () => {
         return;
       }
 
-      const jobId = await JobScrapingService.processJobPosting(jobDescription, sources[0].id);
+      // Process job posting
+      const jobId = await JobScrapingService.processJobPosting(sources[0].base_url, sources[0].id);
       setCurrentJobId(jobId);
       
       toast.success('Job processing started. Keywords will update in real-time.');
@@ -144,7 +132,6 @@ const Index = () => {
       console.error('Error processing job:', error);
       toast.error('Failed to process job posting');
       setIsProcessing(false);
-      setHasError(true);
     }
   }, [jobDescription]);
 
@@ -181,24 +168,10 @@ const Index = () => {
               onSubmit={handleGenerateQuery}
               isProcessing={isProcessing}
             />
-            {isProcessing && !hasError && (
+            {isProcessing && (
               <div className="flex items-center justify-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Processing job data...</span>
-              </div>
-            )}
-            {hasError && (
-              <div className="flex flex-col items-center justify-center gap-4 text-destructive">
-                <p>Failed to process job posting</p>
-                <Button
-                  variant="outline"
-                  onClick={handleRetry}
-                  className="flex items-center gap-2"
-                  disabled={!currentJobId}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Retry
-                </Button>
               </div>
             )}
           </div>
