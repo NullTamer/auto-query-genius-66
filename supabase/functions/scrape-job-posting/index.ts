@@ -1,104 +1,63 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-
-async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Response> {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    return response;
-  } catch (error) {
-    if (retries > 0) {
-      console.log(`Retrying fetch... Attempts remaining: ${retries - 1}`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      return fetchWithRetry(url, retries - 1);
-    }
-    throw error;
-  }
-}
-
-async function extractJobData(html: string) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-  if (!doc) throw new Error("Failed to parse HTML");
-
+function extractJobData(description: string) {
   // Initialize extracted data
   const data = {
-    title: "",
-    company: "",
-    location: "",
-    description: "",
+    title: "Job Position",
+    company: "Company",
+    location: "Location",
+    description: description,
     skills: new Set<string>(),
     requirements: new Set<string>()
   };
 
-  try {
-    // Extract job title (looking for common job title containers)
-    const titleElement = doc.querySelector('h1, .job-title, [data-testid="job-title"]');
-    data.title = titleElement?.textContent?.trim() || "Unknown Title";
+  const skillKeywords = [
+    "JavaScript", "TypeScript", "Python", "Java", "React", "Angular", "Vue",
+    "Node.js", "Express", "Django", "Flask", "SQL", "NoSQL", "AWS", "Azure",
+    "Docker", "Kubernetes", "Git", "CI/CD", "REST", "GraphQL", "HTML", "CSS",
+    "DevOps", "Agile", "Scrum", "Testing", "API", "Frontend", "Backend",
+    "Full Stack", "Cloud", "Database", "Security", "Linux", "Mobile"
+  ];
 
-    // Extract company name
-    const companyElement = doc.querySelector('.company-name, [data-testid="company-name"]');
-    data.company = companyElement?.textContent?.trim() || "Unknown Company";
+  const requirementPhrases = [
+    "years of experience",
+    "degree in",
+    "bachelor's",
+    "master's",
+    "phd",
+    "certification",
+    "required skills",
+    "must have",
+    "responsibilities include"
+  ];
 
-    // Extract location
-    const locationElement = doc.querySelector('.location, [data-testid="location"]');
-    data.location = locationElement?.textContent?.trim() || "Remote";
+  // Convert description to lowercase for case-insensitive matching
+  const descriptionLower = description.toLowerCase();
 
-    // Extract description
-    const descriptionElement = doc.querySelector('.job-description, [data-testid="job-description"]');
-    data.description = descriptionElement?.textContent?.trim() || "";
+  // Extract skills
+  skillKeywords.forEach(skill => {
+    if (descriptionLower.includes(skill.toLowerCase())) {
+      data.skills.add(skill);
+    }
+  });
 
-    // Extract skills and requirements
-    const skillKeywords = [
-      "JavaScript", "TypeScript", "Python", "Java", "React", "Angular", "Vue",
-      "Node.js", "Express", "Django", "Flask", "SQL", "NoSQL", "AWS", "Azure",
-      "Docker", "Kubernetes", "Git", "CI/CD", "REST", "GraphQL"
-    ];
-
-    const requirementPhrases = [
-      "years of experience",
-      "degree in",
-      "bachelor's",
-      "master's",
-      "phd",
-      "certification",
-      "required skills",
-      "must have",
-      "responsibilities include"
-    ];
-
-    // Search for skills in the description
-    const description = data.description.toLowerCase();
-    skillKeywords.forEach(skill => {
-      if (description.includes(skill.toLowerCase())) {
-        data.skills.add(skill);
+  // Extract requirements
+  const sentences = description.split(/[.!?]+/);
+  sentences.forEach(sentence => {
+    const sentenceLower = sentence.toLowerCase().trim();
+    requirementPhrases.forEach(phrase => {
+      if (sentenceLower.includes(phrase)) {
+        data.requirements.add(sentence.trim());
       }
     });
-
-    // Extract requirements
-    const paragraphs = doc.querySelectorAll('p, li');
-    paragraphs.forEach(p => {
-      const text = p.textContent?.toLowerCase() || "";
-      requirementPhrases.forEach(phrase => {
-        if (text.includes(phrase)) {
-          data.requirements.add(text.trim());
-        }
-      });
-    });
-
-  } catch (error) {
-    console.error("Error extracting job data:", error);
-  }
+  });
 
   return {
     ...data,
@@ -114,10 +73,10 @@ serve(async (req) => {
   }
 
   try {
-    const { url, jobPostingId } = await req.json();
+    const { jobDescription, jobPostingId } = await req.json();
 
-    if (!url || !jobPostingId) {
-      throw new Error('Missing required parameters: url and jobPostingId');
+    if (!jobDescription || !jobPostingId) {
+      throw new Error('Missing required parameters: jobDescription and jobPostingId');
     }
 
     // Initialize Supabase client
@@ -125,17 +84,13 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Starting job scraping for URL:', url);
-
-    // Fetch job posting HTML with retry mechanism
-    const response = await fetchWithRetry(url);
-    const html = await response.text();
+    console.log('Starting job processing...');
 
     // Extract job data
-    const jobData = await extractJobData(html);
+    const jobData = extractJobData(jobDescription);
     console.log('Extracted job data:', jobData);
 
-    // Update job posting with scraped data
+    // Update job posting with processed data
     const { error: updateError } = await supabase
       .from('job_postings')
       .update({
@@ -153,16 +108,16 @@ serve(async (req) => {
 
     // Process and store keywords
     const allKeywords = [
-      ...jobData.skills.map(skill => ({ keyword: skill, category: 'skill' })),
-      ...jobData.requirements.map(req => ({ keyword: req, category: 'requirement' }))
+      ...jobData.skills.map(skill => ({ keyword: skill, category: 'skill', frequency: 2 })),
+      ...jobData.requirements.map(req => ({ keyword: req, category: 'requirement', frequency: 1 }))
     ];
 
     if (allKeywords.length > 0) {
       const keywordsToInsert = allKeywords.map(k => ({
         job_posting_id: jobPostingId,
-        keyword: k.keyword.toLowerCase(),
+        keyword: k.keyword,
         category: k.category,
-        frequency: 1,
+        frequency: k.frequency,
         created_at: new Date().toISOString()
       }));
 
@@ -190,7 +145,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error:', error);
     
-    // If we have a jobPostingId, update its status to failed
     try {
       const { jobPostingId } = await req.json();
       if (jobPostingId) {

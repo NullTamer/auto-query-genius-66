@@ -4,9 +4,9 @@ import type { JobSource, JobPosting, ExtractedKeyword } from "@/custom/supabase-
 
 export class JobScrapingService {
   private static readonly MAX_RETRIES = 3;
-  private static readonly RETRY_DELAY = 1000; // 1 second
+  private static readonly RETRY_DELAY = 1000;
 
-  static async processJobPosting(url: string, sourceId: string): Promise<string> {
+  static async processJobPosting(jobDescription: string, sourceId: string): Promise<string> {
     try {
       // Create initial job posting record
       const { data: jobPosting, error: insertError } = await supabase
@@ -14,7 +14,8 @@ export class JobScrapingService {
         .insert({
           source_id: sourceId,
           title: 'Processing...',
-          posting_url: url,
+          description: jobDescription, // Store the job description
+          posting_url: 'direct-input',
           status: 'pending',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -26,19 +27,21 @@ export class JobScrapingService {
         throw new Error(`Failed to create job posting: ${insertError?.message}`);
       }
 
-      // Trigger the scraping Edge Function
+      // Trigger the Edge Function with job description
       const { data: scrapeData, error: scrapeError } = await supabase.functions
         .invoke('scrape-job-posting', {
-          body: { url, jobPostingId: jobPosting.id }
+          body: { 
+            jobDescription,
+            jobPostingId: jobPosting.id 
+          }
         });
 
       if (scrapeError) {
         await this.updateJobPostingStatus(jobPosting.id, 'failed');
-        throw new Error(`Scraping failed: ${scrapeError.message}`);
+        throw new Error(`Processing failed: ${scrapeError.message}`);
       }
 
       console.log('Job posting processed successfully:', scrapeData);
-      
       return jobPosting.id;
 
     } catch (error) {
