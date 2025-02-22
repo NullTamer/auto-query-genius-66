@@ -6,7 +6,7 @@ export class JobScrapingService {
   private static readonly MAX_RETRIES = 3;
   private static readonly RETRY_DELAY = 1000; // 1 second
 
-  static async processJobPosting(url: string, sourceId: string): Promise<void> {
+  static async processJobPosting(url: string, sourceId: string): Promise<string> {
     try {
       // Create initial job posting record
       const { data: jobPosting, error: insertError } = await supabase
@@ -33,10 +33,13 @@ export class JobScrapingService {
         });
 
       if (scrapeError) {
+        await this.updateJobPostingStatus(jobPosting.id, 'failed');
         throw new Error(`Scraping failed: ${scrapeError.message}`);
       }
 
       console.log('Job posting processed successfully:', scrapeData);
+      
+      return jobPosting.id;
 
     } catch (error) {
       console.error('Error processing job posting:', error);
@@ -62,30 +65,6 @@ export class JobScrapingService {
       if (error) throw error;
     } catch (error) {
       console.error('Error updating job posting status:', error);
-      throw error;
-    }
-  }
-
-  static async saveExtractedKeywords(
-    jobPostingId: string,
-    keywords: Array<{ keyword: string; category?: string; frequency: number }>
-  ): Promise<void> {
-    try {
-      const keywordsToInsert = keywords.map(k => ({
-        job_posting_id: jobPostingId,
-        keyword: k.keyword,
-        category: k.category || null,
-        frequency: k.frequency,
-        created_at: new Date().toISOString()
-      }));
-
-      const { error } = await supabase
-        .from('extracted_keywords')
-        .insert(keywordsToInsert);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error saving extracted keywords:', error);
       throw error;
     }
   }
