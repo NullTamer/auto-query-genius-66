@@ -9,12 +9,14 @@ interface JobDescriptionInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  isProcessing?: boolean;
 }
 
 const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   value,
   onChange,
   onSubmit,
+  isProcessing = false
 }) => {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -61,7 +63,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         <Button
           onClick={onSubmit}
           className="w-full bg-primary hover:bg-primary/90 text-white"
-          disabled={!value.trim()}
+          disabled={!value.trim() || isProcessing}
         >
           Generate Boolean Query
         </Button>
