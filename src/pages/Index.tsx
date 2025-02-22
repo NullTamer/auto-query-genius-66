@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
@@ -39,11 +40,69 @@ const Index = () => {
   const [keywords, setKeywords] = useState<Array<{ keyword: string; category?: string; frequency: number }>>([]);
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
+  const fetchKeywords = useCallback(async (jobId: string) => {
+    try {
+      const { data: keywordsData, error } = await supabase
+        .from('extracted_keywords')
+        .select('*')
+        .eq('job_posting_id', jobId);
+
+      if (error) throw error;
+
+      if (keywordsData) {
+        const formattedKeywords = keywordsData.map(k => ({
+          keyword: k.keyword,
+          category: k.category || undefined,
+          frequency: k.frequency
+        }));
+        setKeywords(formattedKeywords);
+        setBooleanQuery(generateBooleanQuery(formattedKeywords));
+      }
+    } catch (error) {
+      console.error('Error fetching keywords:', error);
+    }
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    if (!currentJobId) return;
+
+    setIsRefreshing(true);
+    try {
+      // Check job status
+      const { data: jobPosting, error: jobError } = await supabase
+        .from('job_postings')
+        .select('*')
+        .eq('id', currentJobId)
+        .single();
+
+      if (jobError) throw jobError;
+
+      if (jobPosting.status === 'processed') {
+        await fetchKeywords(currentJobId);
+        setLastScrapeTime(jobPosting.processed_at);
+        setIsProcessing(false);
+        toast.success('Data refreshed successfully');
+      } else if (jobPosting.status === 'failed') {
+        setHasError(true);
+        setIsProcessing(false);
+        toast.error('Job processing failed');
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      toast.error('Failed to refresh data');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [currentJobId, fetchKeywords]);
+
   useEffect(() => {
+    if (!currentJobId) return;
+
     const jobPostingsChannel = supabase
       .channel('job-postings')
       .on(
@@ -51,45 +110,22 @@ const Index = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'job_postings'
+          table: 'job_postings',
+          filter: `id=eq.${currentJobId}`
         },
-        (payload) => {
+        async (payload) => {
           const posting = payload.new as JobPosting;
-          if (posting.id === currentJobId) {
-            if (posting.status === 'processed') {
-              setLastScrapeTime(posting.processed_at || null);
-              toast.success(`Job posting processed: ${posting.title}`);
-              setIsProcessing(false);
-            } else if (posting.status === 'failed') {
-              toast.error(`Failed to process job posting: ${posting.title}`);
-              setIsProcessing(false);
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    const keywordsChannel = supabase
-      .channel('extracted-keywords')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'extracted_keywords'
-        },
-        (payload) => {
-          const newKeyword = payload.new as ExtractedKeyword;
-          if (newKeyword.job_posting_id === currentJobId) {
-            setKeywords(prev => {
-              const updatedKeywords = [...prev, {
-                keyword: newKeyword.keyword,
-                category: newKeyword.category || undefined,
-                frequency: newKeyword.frequency
-              }];
-              setBooleanQuery(generateBooleanQuery(updatedKeywords));
-              return updatedKeywords;
-            });
+          console.log('Job posting update:', posting);
+          
+          if (posting.status === 'processed') {
+            await fetchKeywords(currentJobId);
+            setLastScrapeTime(posting.processed_at || null);
+            setIsProcessing(false);
+            toast.success('Job processing completed');
+          } else if (posting.status === 'failed') {
+            setHasError(true);
+            setIsProcessing(false);
+            toast.error('Job processing failed');
           }
         }
       )
@@ -97,26 +133,8 @@ const Index = () => {
 
     return () => {
       supabase.removeChannel(jobPostingsChannel);
-      supabase.removeChannel(keywordsChannel);
     };
-  }, [currentJobId]);
-
-  const handleRetry = useCallback(async () => {
-    if (!currentJobId) return;
-
-    setIsProcessing(true);
-    setHasError(false);
-    
-    try {
-      await JobScrapingService.retryJobPosting(currentJobId);
-      toast.success('Retrying job processing...');
-    } catch (error) {
-      console.error('Error retrying job processing:', error);
-      toast.error('Failed to retry job processing');
-      setIsProcessing(false);
-      setHasError(true);
-    }
-  }, [currentJobId]);
+  }, [currentJobId, fetchKeywords]);
 
   const handleGenerateQuery = useCallback(async () => {
     try {
@@ -138,7 +156,8 @@ const Index = () => {
       const jobId = await JobScrapingService.processJobPosting(jobDescription, sources[0].id);
       setCurrentJobId(jobId);
       
-      toast.success('Job processing started. Keywords will update in real-time.');
+      toast.success('Job processing started');
+      console.log('Processing started for job ID:', jobId);
 
     } catch (error) {
       console.error('Error processing job:', error);
@@ -181,24 +200,28 @@ const Index = () => {
               onSubmit={handleGenerateQuery}
               isProcessing={isProcessing}
             />
-            {isProcessing && !hasError && (
-              <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Processing job data...</span>
-              </div>
-            )}
-            {hasError && (
-              <div className="flex flex-col items-center justify-center gap-4 text-destructive">
-                <p>Failed to process job posting</p>
+            <div className="flex items-center justify-center gap-4">
+              {isProcessing && !hasError && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Processing job data...</span>
+                </div>
+              )}
+              {currentJobId && (
                 <Button
                   variant="outline"
-                  onClick={handleRetry}
+                  onClick={handleRefresh}
                   className="flex items-center gap-2"
-                  disabled={!currentJobId}
+                  disabled={isRefreshing || (!isProcessing && !hasError)}
                 >
-                  <RefreshCw className="h-4 w-4" />
-                  Retry
+                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Refresh
                 </Button>
+              )}
+            </div>
+            {hasError && (
+              <div className="flex items-center justify-center gap-2 text-destructive">
+                <p>Failed to process job posting</p>
               </div>
             )}
           </div>
