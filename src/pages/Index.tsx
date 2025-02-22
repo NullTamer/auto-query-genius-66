@@ -1,12 +1,11 @@
-
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Download } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { JobPosting, ExtractedKeyword } from "@/custom/supabase-types";
@@ -46,35 +45,81 @@ const Index = () => {
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [updateCount, setUpdateCount] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [updateCount, setUpdateCount] = useState(0);
+
+  const lastKeywordUpdate = useRef<string>("");
+  const lastProcessedTime = useRef<string | null>(null);
 
   const fetchKeywords = useCallback(async (jobId: string) => {
     try {
+      console.log('Fetching keywords for job ID:', jobId);
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
         .select('*')
-        .eq('job_posting_id', jobId);
+        .eq('job_posting_id', jobId)
+        .order('frequency', { ascending: false });
 
       if (error) throw error;
 
       if (keywordsData) {
-        const formattedKeywords = keywordsData.map(k => ({
-          keyword: k.keyword,
-          category: k.category || undefined,
-          frequency: k.frequency
-        }));
-        setKeywords(formattedKeywords);
-        setBooleanQuery(generateBooleanQuery(formattedKeywords));
-        setUpdateCount(prev => prev + 1);
+        const dataHash = JSON.stringify(keywordsData);
+        
+        if (dataHash !== lastKeywordUpdate.current) {
+          lastKeywordUpdate.current = dataHash;
+          
+          const formattedKeywords = keywordsData.map(k => ({
+            keyword: k.keyword,
+            category: k.category || undefined,
+            frequency: k.frequency
+          }));
+          
+          setKeywords(formattedKeywords);
+          setBooleanQuery(generateBooleanQuery(formattedKeywords));
+          setUpdateCount(prev => prev + 1);
+        } else {
+          console.log('Keyword data unchanged, skipping update');
+        }
       }
     } catch (error) {
       console.error('Error fetching keywords:', error);
       toast.error('Failed to fetch keywords');
     }
   }, []);
+
+  const handleRefresh = useCallback(async () => {
+    if (!currentJobId || isRefreshing) return;
+
+    setIsRefreshing(true);
+    try {
+      console.log('Manual refresh initiated');
+      const { data: posting, error } = await supabase
+        .from('job_postings')
+        .select('*')
+        .eq('id', currentJobId)
+        .single();
+
+      if (error) throw error;
+
+      if (posting.status === 'processed') {
+        await fetchKeywords(currentJobId);
+        setLastScrapeTime(posting.processed_at || null);
+        setIsProcessing(false);
+        toast.success('Data refreshed successfully');
+      } else if (posting.status === 'failed') {
+        setHasError(true);
+        setIsProcessing(false);
+        toast.error(`Job processing failed: ${posting.description}`);
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      toast.error('Failed to refresh data');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [currentJobId, fetchKeywords, isRefreshing]);
 
   useEffect(() => {
     if (!currentJobId) return;
@@ -95,70 +140,30 @@ const Index = () => {
           console.log('Job posting update received:', payload);
           const posting = payload.new as JobPosting;
           
-          if (posting.status === 'processed') {
-            await fetchKeywords(currentJobId);
-            setLastScrapeTime(posting.processed_at || null);
-            setIsProcessing(false);
-            toast.success('Job processing completed');
-          } else if (posting.status === 'failed') {
-            setHasError(true);
-            setIsProcessing(false);
-            toast.error(`Job processing failed: ${posting.description}`);
+          if (posting.processed_at !== lastProcessedTime.current) {
+            lastProcessedTime.current = posting.processed_at || null;
+            
+            if (posting.status === 'processed') {
+              await fetchKeywords(currentJobId);
+              setLastScrapeTime(posting.processed_at || null);
+              setIsProcessing(false);
+              toast.success('Job processing completed');
+            } else if (posting.status === 'failed') {
+              setHasError(true);
+              setIsProcessing(false);
+              toast.error(`Job processing failed: ${posting.description}`);
+            }
+          } else {
+            console.log('Skipping duplicate job posting update');
           }
         }
       )
       .subscribe();
 
-    const keywordsChannel = supabase
-      .channel('keyword-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'extracted_keywords',
-          filter: `job_posting_id=eq.${currentJobId}`
-        },
-        () => {
-          console.log('New keywords detected');
-          fetchKeywords(currentJobId);
-        }
-      )
-      .subscribe();
-
     return () => {
+      console.log('Cleaning up real-time subscription');
       supabase.removeChannel(jobChannel);
-      supabase.removeChannel(keywordsChannel);
     };
-  }, [currentJobId, fetchKeywords]);
-
-  const handleRefresh = useCallback(async () => {
-    if (!currentJobId) return;
-
-    setIsRefreshing(true);
-    try {
-      const { data: posting, error } = await supabase
-        .from('job_postings')
-        .select('*')
-        .eq('id', currentJobId)
-        .single();
-
-      if (error) throw error;
-
-      if (posting.status === 'processed') {
-        await fetchKeywords(currentJobId);
-        setLastScrapeTime(posting.processed_at || null);
-        toast.success('Data refreshed successfully');
-      } else if (posting.status === 'failed') {
-        setHasError(true);
-        toast.error(`Job processing failed: ${posting.description}`);
-      }
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-      toast.error('Failed to refresh data');
-    } finally {
-      setIsRefreshing(false);
-    }
   }, [currentJobId, fetchKeywords]);
 
   const handleGenerateQuery = useCallback(async () => {
@@ -168,6 +173,8 @@ const Index = () => {
       setKeywords([]);
       setBooleanQuery("");
       setUpdateCount(0);
+      lastKeywordUpdate.current = "";
+      lastProcessedTime.current = null;
 
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
@@ -192,20 +199,6 @@ const Index = () => {
       setHasError(true);
     }
   }, [jobDescription]);
-
-  const handleExportQuery = useCallback(() => {
-    // Basic export implementation - to be enhanced with ATS integration
-    const blob = new Blob([booleanQuery], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'boolean-query.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success('Query exported successfully');
-  }, [booleanQuery]);
 
   const handleRemoveKeyword = useCallback((keywordToRemove: string) => {
     setKeywords(prev => {
@@ -261,7 +254,7 @@ const Index = () => {
                 <Button
                   variant="outline"
                   onClick={handleRefresh}
-                  disabled={isRefreshing || (!isProcessing && !hasError)}
+                  disabled={isRefreshing}
                   className="flex items-center gap-2"
                 >
                   <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -282,21 +275,7 @@ const Index = () => {
           />
         </div>
 
-        <div className="space-y-4">
-          <QueryPreview query={booleanQuery} />
-          {booleanQuery && (
-            <div className="flex justify-end">
-              <Button
-                variant="secondary"
-                onClick={handleExportQuery}
-                className="flex items-center gap-2"
-              >
-                <Download className="h-4 w-4" />
-                Export Query
-              </Button>
-            </div>
-          )}
-        </div>
+        <QueryPreview query={booleanQuery} />
       </div>
     </div>
   );
