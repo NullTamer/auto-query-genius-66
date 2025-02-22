@@ -73,10 +73,10 @@ serve(async (req) => {
   }
 
   try {
-    const { jobDescription, jobPostingId } = await req.json();
+    const { jobDescription, jobPostingId, url } = await req.json();
 
-    if (!jobDescription || !jobPostingId) {
-      throw new Error('Missing required parameters: jobDescription and jobPostingId');
+    if (!jobPostingId || (!jobDescription && !url)) {
+      throw new Error('Missing required parameters');
     }
 
     // Initialize Supabase client
@@ -86,8 +86,26 @@ serve(async (req) => {
 
     console.log('Starting job processing...');
 
+    // Handle direct input vs URL scraping
+    let description = jobDescription;
+    if (url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+        description = await response.text();
+      } catch (fetchError) {
+        console.error('Error fetching URL:', fetchError);
+        // Fall back to direct processing if URL fails
+        if (!description) {
+          throw fetchError;
+        }
+      }
+    }
+
     // Extract job data
-    const jobData = extractJobData(jobDescription);
+    const jobData = extractJobData(description);
     console.log('Extracted job data:', jobData);
 
     // Update job posting with processed data
