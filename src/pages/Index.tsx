@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
@@ -5,14 +6,13 @@ import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
 import { toast } from "sonner";
-import { Loader2, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Loader2 } from "lucide-react";
 import type { JobPosting, ExtractedKeyword } from "@/custom/supabase-types";
 
 const generateBooleanQuery = (keywords: Array<{ keyword: string; category?: string; frequency: number }>) => {
   if (keywords.length === 0) return "";
 
+  // Sort keywords by frequency and category
   const sortedKeywords = [...keywords].sort((a, b) => {
     if (b.frequency !== a.frequency) return b.frequency - a.frequency;
     if (a.category === 'skill' && b.category !== 'skill') return -1;
@@ -20,13 +20,16 @@ const generateBooleanQuery = (keywords: Array<{ keyword: string; category?: stri
     return 0;
   });
 
+  // Separate skills and requirements
   const skills = sortedKeywords.filter(k => k.category === 'skill').map(k => k.keyword);
   const requirements = sortedKeywords.filter(k => k.category === 'requirement').map(k => k.keyword);
 
+  // Build query parts
   const essentialSkills = skills.slice(0, 3).join(" AND ");
   const optionalSkills = skills.slice(3).join(" OR ");
   const requirementsClauses = requirements.map(req => `"${req}"`).join(" OR ");
 
+  // Combine parts
   const parts = [];
   if (essentialSkills) parts.push(`(${essentialSkills})`);
   if (optionalSkills) parts.push(`(${optionalSkills})`);
@@ -40,105 +43,75 @@ const Index = () => {
   const [keywords, setKeywords] = useState<Array<{ keyword: string; category?: string; frequency: number }>>([]);
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [hasError, setHasError] = useState(false);
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [updateCount, setUpdateCount] = useState(0);
 
-  const fetchKeywords = useCallback(async (jobId: string) => {
-    try {
-      console.log('Fetching keywords for job ID:', jobId);
-      const { data: keywordsData, error } = await supabase
-        .from('extracted_keywords')
-        .select('*')
-        .eq('job_posting_id', jobId);
-
-      if (error) throw error;
-
-      if (keywordsData) {
-        console.log('Received keywords:', keywordsData);
-        const formattedKeywords = keywordsData.map(k => ({
-          keyword: k.keyword,
-          category: k.category || undefined,
-          frequency: k.frequency
-        }));
-        setKeywords(formattedKeywords);
-        setBooleanQuery(generateBooleanQuery(formattedKeywords));
-        setUpdateCount(prev => prev + 1);
-      }
-    } catch (error) {
-      console.error('Error fetching keywords:', error);
-      toast.error('Failed to fetch keywords');
-    }
-  }, []);
-
+  // Subscribe to real-time updates for job postings and keywords
   useEffect(() => {
-    if (!currentJobId) return;
-
-    console.log('Setting up real-time subscriptions for job ID:', currentJobId);
-
-    // Subscribe to job posting updates
     const jobPostingsChannel = supabase
-      .channel('job-postings-channel')
+      .channel('job-postings')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'job_postings',
-          filter: `id=eq.${currentJobId}`
+          table: 'job_postings'
         },
-        async (payload) => {
-          console.log('Received job posting update:', payload);
+        (payload) => {
           const posting = payload.new as JobPosting;
-          
-          if (posting.status === 'processed') {
-            setLastScrapeTime(posting.processed_at || null);
-            setIsProcessing(false);
-            await fetchKeywords(currentJobId);
-            toast.success('Job processing completed');
-          } else if (posting.status === 'failed') {
-            setHasError(true);
-            setIsProcessing(false);
-            toast.error('Job processing failed');
+          if (posting.id === currentJobId) {
+            if (posting.status === 'processed') {
+              setLastScrapeTime(posting.processed_at || null);
+              toast.success(`Job posting processed: ${posting.title}`);
+              setIsProcessing(false);
+            } else if (posting.status === 'failed') {
+              toast.error(`Failed to process job posting: ${posting.title}`);
+              setIsProcessing(false);
+            }
           }
         }
       )
       .subscribe();
 
-    // Subscribe to keyword updates
     const keywordsChannel = supabase
-      .channel('keywords-channel')
+      .channel('extracted-keywords')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
-          table: 'extracted_keywords',
-          filter: `job_posting_id=eq.${currentJobId}`
+          table: 'extracted_keywords'
         },
-        async () => {
-          console.log('Received keywords update');
-          await fetchKeywords(currentJobId);
+        (payload) => {
+          const newKeyword = payload.new as ExtractedKeyword;
+          if (newKeyword.job_posting_id === currentJobId) {
+            setKeywords(prev => {
+              const updatedKeywords = [...prev, {
+                keyword: newKeyword.keyword,
+                category: newKeyword.category || undefined,
+                frequency: newKeyword.frequency
+              }];
+              setBooleanQuery(generateBooleanQuery(updatedKeywords));
+              return updatedKeywords;
+            });
+          }
         }
       )
       .subscribe();
 
     return () => {
-      console.log('Cleaning up real-time subscriptions');
       supabase.removeChannel(jobPostingsChannel);
       supabase.removeChannel(keywordsChannel);
     };
-  }, [currentJobId, fetchKeywords]);
+  }, [currentJobId]);
 
   const handleGenerateQuery = useCallback(async () => {
     try {
       setIsProcessing(true);
-      setHasError(false);
       setKeywords([]);
       setBooleanQuery("");
-      setUpdateCount(0);
 
+      // Get job sources
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
         .select('*');
@@ -149,17 +122,16 @@ const Index = () => {
         return;
       }
 
-      const jobId = await JobScrapingService.processJobPosting(jobDescription, sources[0].id);
+      // Process job posting
+      const jobId = await JobScrapingService.processJobPosting(sources[0].base_url, sources[0].id);
       setCurrentJobId(jobId);
       
-      toast.success('Job processing started');
-      console.log('Processing started for job ID:', jobId);
+      toast.success('Job processing started. Keywords will update in real-time.');
 
     } catch (error) {
       console.error('Error processing job:', error);
       toast.error('Failed to process job posting');
       setIsProcessing(false);
-      setHasError(true);
     }
   }, [jobDescription]);
 
@@ -174,17 +146,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted p-8">
       <div className="max-w-5xl mx-auto space-y-8">
-        <div className="text-center mb-12 animate-fade-in relative">
-          <div className="absolute right-0 top-0">
-            {updateCount > 0 && (
-              <Badge 
-                variant="secondary"
-                className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium animate-pulse"
-              >
-                {updateCount}
-              </Badge>
-            )}
-          </div>
+        <div className="text-center mb-12 animate-fade-in">
           <h1 className="text-4xl font-bold text-secondary mb-4">
             AutoSearchPro
           </h1>
@@ -206,15 +168,10 @@ const Index = () => {
               onSubmit={handleGenerateQuery}
               isProcessing={isProcessing}
             />
-            {isProcessing && !hasError && (
+            {isProcessing && (
               <div className="flex items-center justify-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Processing job data...</span>
-              </div>
-            )}
-            {hasError && (
-              <div className="flex items-center justify-center gap-2 text-destructive">
-                <p>Failed to process job posting</p>
               </div>
             )}
           </div>
