@@ -122,8 +122,8 @@ const Index = () => {
         return;
       }
 
-      // Process job posting with actual description
-      const jobId = await JobScrapingService.processJobPosting(jobDescription, sources[0].id);
+      // Process job posting
+      const jobId = await JobScrapingService.processJobPosting(sources[0].base_url, sources[0].id);
       setCurrentJobId(jobId);
       
       toast.success('Job processing started. Keywords will update in real-time.');
