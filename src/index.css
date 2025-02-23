@@ -55,7 +55,7 @@
   }
 
   .cyber-card {
-    @apply backdrop-blur-xl bg-card/80 border border-primary/20;
+    @apply backdrop-blur-xl bg-secondary/80 border border-primary/20;
     box-shadow: 0 0 10px theme('colors.primary.DEFAULT/0.2'),
                 inset 0 0 20px theme('colors.primary.DEFAULT/0.1');
   }
