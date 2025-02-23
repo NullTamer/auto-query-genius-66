@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
@@ -8,6 +8,7 @@ import QueryPreview from "@/components/QueryPreview";
 import { toast } from "sonner";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import type { JobPosting, ExtractedKeyword } from "@/custom/supabase-types";
 
 const generateBooleanQuery = (keywords: Array<{ keyword: string; category?: string; frequency: number }>) => {
@@ -44,9 +45,13 @@ const Index = () => {
   const [hasError, setHasError] = useState(false);
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [updateCount, setUpdateCount] = useState(0);
+
+  const lastProcessedState = useRef<string | null>(null);
 
   const fetchKeywords = useCallback(async (jobId: string) => {
     try {
+      console.log('Fetching keywords for job ID:', jobId);
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
         .select('*')
@@ -62,35 +67,36 @@ const Index = () => {
         }));
         setKeywords(formattedKeywords);
         setBooleanQuery(generateBooleanQuery(formattedKeywords));
+        setUpdateCount(prev => prev + 1);
       }
     } catch (error) {
       console.error('Error fetching keywords:', error);
+      toast.error('Failed to fetch keywords');
     }
   }, []);
 
   const handleRefresh = useCallback(async () => {
-    if (!currentJobId) return;
+    if (!currentJobId || isRefreshing) return;
 
     setIsRefreshing(true);
     try {
-      // Check job status
-      const { data: jobPosting, error: jobError } = await supabase
+      const { data: posting, error } = await supabase
         .from('job_postings')
         .select('*')
         .eq('id', currentJobId)
         .single();
 
-      if (jobError) throw jobError;
+      if (error) throw error;
 
-      if (jobPosting.status === 'processed') {
+      if (posting.status === 'processed') {
         await fetchKeywords(currentJobId);
-        setLastScrapeTime(jobPosting.processed_at);
+        setLastScrapeTime(posting.processed_at);
         setIsProcessing(false);
         toast.success('Data refreshed successfully');
-      } else if (jobPosting.status === 'failed') {
+      } else if (posting.status === 'failed') {
         setHasError(true);
         setIsProcessing(false);
-        toast.error('Job processing failed');
+        toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -98,13 +104,15 @@ const Index = () => {
     } finally {
       setIsRefreshing(false);
     }
-  }, [currentJobId, fetchKeywords]);
+  }, [currentJobId, fetchKeywords, isRefreshing]);
 
   useEffect(() => {
     if (!currentJobId) return;
 
-    const jobPostingsChannel = supabase
-      .channel('job-postings')
+    console.log('Setting up real-time subscription for job ID:', currentJobId);
+
+    const channel = supabase
+      .channel('job-processing')
       .on(
         'postgres_changes',
         {
@@ -115,8 +123,17 @@ const Index = () => {
         },
         async (payload) => {
           const posting = payload.new as JobPosting;
-          console.log('Job posting update:', posting);
+          const newState = `${posting.status}-${posting.processed_at}`;
           
+          // Prevent duplicate updates
+          if (newState === lastProcessedState.current) {
+            console.log('Skipping duplicate update');
+            return;
+          }
+          
+          lastProcessedState.current = newState;
+          console.log('Job posting update:', posting);
+
           if (posting.status === 'processed') {
             await fetchKeywords(currentJobId);
             setLastScrapeTime(posting.processed_at || null);
@@ -125,14 +142,15 @@ const Index = () => {
           } else if (posting.status === 'failed') {
             setHasError(true);
             setIsProcessing(false);
-            toast.error('Job processing failed');
+            toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
           }
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(jobPostingsChannel);
+      console.log('Cleaning up real-time subscription');
+      supabase.removeChannel(channel);
     };
   }, [currentJobId, fetchKeywords]);
 
@@ -142,6 +160,8 @@ const Index = () => {
       setHasError(false);
       setKeywords([]);
       setBooleanQuery("");
+      setUpdateCount(0);
+      lastProcessedState.current = null;
 
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
@@ -178,7 +198,18 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted p-8">
       <div className="max-w-5xl mx-auto space-y-8">
-        <div className="text-center mb-12 animate-fade-in">
+        <div className="text-center mb-12 animate-fade-in relative">
+          <div className="absolute right-0 top-0">
+            {updateCount > 0 && (
+              <Badge 
+                variant="secondary"
+                className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium animate-pulse"
+                title={`Updates: ${updateCount}`}
+              >
+                {updateCount}
+              </Badge>
+            )}
+          </div>
           <h1 className="text-4xl font-bold text-secondary mb-4">
             AutoSearchPro
           </h1>
@@ -211,8 +242,8 @@ const Index = () => {
                 <Button
                   variant="outline"
                   onClick={handleRefresh}
+                  disabled={isRefreshing}
                   className="flex items-center gap-2"
-                  disabled={isRefreshing || (!isProcessing && !hasError)}
                 >
                   <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                   Refresh
@@ -220,8 +251,9 @@ const Index = () => {
               )}
             </div>
             {hasError && (
-              <div className="flex items-center justify-center gap-2 text-destructive">
+              <div className="text-center text-destructive">
                 <p>Failed to process job posting</p>
+                <p className="text-sm">Try using the refresh button or submitting again</p>
               </div>
             )}
           </div>
