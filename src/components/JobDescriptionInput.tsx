@@ -3,7 +3,7 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload } from "lucide-react";
+import { Terminal, Upload } from "lucide-react";
 
 interface JobDescriptionInputProps {
   value: string;
@@ -31,15 +31,18 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   };
 
   return (
-    <Card className="p-6 backdrop-blur-lg bg-glass shadow-lg animate-fade-in">
+    <Card className="cyber-card p-4 md:p-6">
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-semibold text-secondary">Job Description</h2>
+          <h2 className="text-xl md:text-2xl font-semibold text-primary neon-glow">
+            <Terminal className="inline mr-2 h-5 w-5" />
+            Job Description
+          </h2>
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="flex items-center gap-2"
+              className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
               onClick={() => document.getElementById("file-upload")?.click()}
             >
               <Upload size={16} />
@@ -58,11 +61,11 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Paste your job description here..."
-          className="min-h-[200px] resize-none"
+          className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all"
         />
         <Button
           onClick={onSubmit}
-          className="w-full bg-primary hover:bg-primary/90 text-white"
+          className="w-full cyber-card bg-primary/20 hover:bg-primary/30 text-primary hover:text-primary-foreground hover:neon-glow transition-all"
           disabled={!value.trim() || isProcessing}
         >
           Generate Boolean Query
