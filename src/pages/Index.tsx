@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
@@ -47,6 +48,7 @@ const Index = () => {
   const [updateCount, setUpdateCount] = useState(0);
 
   const lastProcessedState = useRef<string | null>(null);
+  const channelRef = useRef<any>(null);
 
   const fetchKeywords = useCallback(async (jobId: string) => {
     try {
@@ -105,23 +107,32 @@ const Index = () => {
     }
   }, [currentJobId, fetchKeywords, isRefreshing]);
 
-  useEffect(() => {
-    if (!currentJobId) return;
+  const setupRealtimeSubscription = useCallback(() => {
+    if (channelRef.current) {
+      console.log('Reusing existing subscription');
+      return;
+    }
 
-    console.log('Setting up real-time subscription for job ID:', currentJobId);
-
-    const channel = supabase
-      .channel('job-processing')
+    console.log('Setting up new real-time subscription');
+    
+    channelRef.current = supabase
+      .channel('job-updates')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'job_postings',
-          filter: `id=eq.${currentJobId}`
+          table: 'job_postings'
         },
         async (payload) => {
           const posting = payload.new as JobPosting;
+          
+          // Only process updates for the current job
+          if (posting.id !== currentJobId) {
+            console.log('Ignoring update for different job:', posting.id);
+            return;
+          }
+
           const newState = `${posting.status}-${posting.processed_at}`;
           
           if (newState === lastProcessedState.current) {
@@ -130,10 +141,10 @@ const Index = () => {
           }
           
           lastProcessedState.current = newState;
-          console.log('Job posting update:', posting);
+          console.log('Processing job update:', posting);
 
           if (posting.status === 'processed') {
-            await fetchKeywords(currentJobId);
+            await fetchKeywords(posting.id);
             setLastScrapeTime(posting.processed_at || null);
             setIsProcessing(false);
             toast.success('Job processing completed');
@@ -144,13 +155,23 @@ const Index = () => {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+      });
 
     return () => {
-      console.log('Cleaning up real-time subscription');
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        console.log('Cleaning up subscription on component unmount');
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
   }, [currentJobId, fetchKeywords]);
+
+  useEffect(() => {
+    const cleanup = setupRealtimeSubscription();
+    return cleanup;
+  }, [setupRealtimeSubscription]);
 
   const handleGenerateQuery = useCallback(async () => {
     try {
