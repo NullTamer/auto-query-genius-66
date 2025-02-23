@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
@@ -10,6 +9,7 @@ import { Terminal, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { JobPosting } from "@/custom/supabase-types";
+import debounce from "lodash.debounce";
 
 const generateBooleanQuery = (keywords: Array<{ keyword: string; category?: string; frequency: number }>) => {
   if (keywords.length === 0) return "";
@@ -49,32 +49,36 @@ const Index = () => {
 
   const lastProcessedState = useRef<string | null>(null);
   const channelRef = useRef<any>(null);
+  const isSubscribed = useRef(false);
 
-  const fetchKeywords = useCallback(async (jobId: string) => {
-    try {
-      console.log('Fetching keywords for job ID:', jobId);
-      const { data: keywordsData, error } = await supabase
-        .from('extracted_keywords')
-        .select('*')
-        .eq('job_posting_id', jobId);
+  const debouncedFetchKeywords = useCallback(
+    debounce(async (jobId: string) => {
+      try {
+        console.log('Fetching keywords for job ID:', jobId);
+        const { data: keywordsData, error } = await supabase
+          .from('extracted_keywords')
+          .select('*')
+          .eq('job_posting_id', jobId);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (keywordsData) {
-        const formattedKeywords = keywordsData.map(k => ({
-          keyword: k.keyword,
-          category: k.category || undefined,
-          frequency: k.frequency
-        }));
-        setKeywords(formattedKeywords);
-        setBooleanQuery(generateBooleanQuery(formattedKeywords));
-        setUpdateCount(prev => prev + 1);
+        if (keywordsData) {
+          const formattedKeywords = keywordsData.map(k => ({
+            keyword: k.keyword,
+            category: k.category || undefined,
+            frequency: k.frequency
+          }));
+          setKeywords(formattedKeywords);
+          setBooleanQuery(generateBooleanQuery(formattedKeywords));
+          setUpdateCount(prev => prev + 1);
+        }
+      } catch (error) {
+        console.error('Error fetching keywords:', error);
+        toast.error('Failed to fetch keywords');
       }
-    } catch (error) {
-      console.error('Error fetching keywords:', error);
-      toast.error('Failed to fetch keywords');
-    }
-  }, []);
+    }, 500),
+    []
+  );
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
@@ -90,7 +94,7 @@ const Index = () => {
       if (error) throw error;
 
       if (posting.status === 'processed') {
-        await fetchKeywords(currentJobId);
+        await debouncedFetchKeywords(currentJobId);
         setLastScrapeTime(posting.processed_at);
         setIsProcessing(false);
         toast.success('Data refreshed successfully');
@@ -105,15 +109,16 @@ const Index = () => {
     } finally {
       setIsRefreshing(false);
     }
-  }, [currentJobId, fetchKeywords, isRefreshing]);
+  }, [currentJobId, debouncedFetchKeywords, isRefreshing]);
 
   const setupRealtimeSubscription = useCallback(() => {
-    if (channelRef.current) {
-      console.log('Reusing existing subscription');
+    if (channelRef.current || isSubscribed.current || !currentJobId) {
+      console.log('Subscription already exists or no job ID');
       return;
     }
 
     console.log('Setting up new real-time subscription');
+    isSubscribed.current = true;
     
     channelRef.current = supabase
       .channel('job-updates')
@@ -124,10 +129,9 @@ const Index = () => {
           schema: 'public',
           table: 'job_postings'
         },
-        async (payload) => {
+        debounce(async (payload) => {
           const posting = payload.new as JobPosting;
           
-          // Only process updates for the current job
           if (posting.id !== currentJobId) {
             console.log('Ignoring update for different job:', posting.id);
             return;
@@ -144,7 +148,7 @@ const Index = () => {
           console.log('Processing job update:', posting);
 
           if (posting.status === 'processed') {
-            await fetchKeywords(posting.id);
+            await debouncedFetchKeywords(posting.id);
             setLastScrapeTime(posting.processed_at || null);
             setIsProcessing(false);
             toast.success('Job processing completed');
@@ -153,7 +157,7 @@ const Index = () => {
             setIsProcessing(false);
             toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
           }
-        }
+        }, 1000)
       )
       .subscribe((status) => {
         console.log('Subscription status:', status);
@@ -161,17 +165,22 @@ const Index = () => {
 
     return () => {
       if (channelRef.current) {
-        console.log('Cleaning up subscription on component unmount');
+        console.log('Cleaning up subscription');
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
+        isSubscribed.current = false;
       }
     };
-  }, [currentJobId, fetchKeywords]);
+  }, [currentJobId, debouncedFetchKeywords]);
 
   useEffect(() => {
+    if (!currentJobId) return;
+    
     const cleanup = setupRealtimeSubscription();
-    return cleanup;
-  }, [setupRealtimeSubscription]);
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [currentJobId, setupRealtimeSubscription]);
 
   const handleGenerateQuery = useCallback(async () => {
     try {
@@ -181,6 +190,12 @@ const Index = () => {
       setBooleanQuery("");
       setUpdateCount(0);
       lastProcessedState.current = null;
+
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+        isSubscribed.current = false;
+      }
 
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
