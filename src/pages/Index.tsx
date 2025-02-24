@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
@@ -37,15 +37,23 @@ const Index = () => {
   } = useKeywords();
 
   const handleProcessed = useCallback(async (jobId: string, processedAt: string) => {
-    await debouncedFetchKeywords(jobId);
-    setLastScrapeTime(processedAt);
-    setIsProcessing(false);
-  }, [debouncedFetchKeywords, setLastScrapeTime, setIsProcessing]);
+    try {
+      await debouncedFetchKeywords(jobId);
+      setLastScrapeTime(processedAt);
+    } catch (error) {
+      console.error('Error fetching keywords:', error);
+      toast.error('Failed to fetch keywords');
+      setHasError(true);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [debouncedFetchKeywords, setLastScrapeTime, setIsProcessing, setHasError]);
 
   const handleFailed = useCallback((description?: string) => {
     setHasError(true);
     setIsProcessing(false);
-  }, [setHasError, setIsProcessing]);
+    resetKeywords();
+  }, [setHasError, setIsProcessing, resetKeywords]);
 
   useRealtimeUpdates({
     currentJobId,
@@ -59,25 +67,29 @@ const Index = () => {
     const jobId = await processJob(jobDescription);
     if (jobId) {
       setIsProcessing(true);
+      setHasError(false);
     }
-  }, [jobDescription, processJob, resetKeywords]);
+  }, [jobDescription, processJob, resetKeywords, setIsProcessing, setHasError]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
     setIsRefreshing(true);
+    setHasError(false);
     
     try {
       await debouncedFetchKeywords(currentJobId);
       toast.success('Data refreshed successfully');
     } catch (error) {
+      console.error('Error refreshing:', error);
       toast.error('Failed to refresh data');
+      setHasError(true);
     } finally {
       setIsRefreshing(false);
     }
-  }, [currentJobId, isRefreshing, debouncedFetchKeywords]);
+  }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
 
   // Update boolean query whenever keywords change
-  useCallback(() => {
+  useEffect(() => {
     setBooleanQuery(generateBooleanQuery(keywords));
   }, [keywords]);
 

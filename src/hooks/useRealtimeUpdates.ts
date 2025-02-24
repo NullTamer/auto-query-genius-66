@@ -21,6 +21,8 @@ export const useRealtimeUpdates = ({
   const isSubscribed = useRef(false);
   const isProcessingUpdate = useRef(false);
   const lastUpdateTime = useRef<number>(0);
+  const retryCount = useRef(0);
+  const MAX_RETRIES = 3;
   const THROTTLE_DELAY = 1000; // 1 second minimum between updates
 
   const setupRealtimeSubscription = useCallback(() => {
@@ -72,26 +74,22 @@ export const useRealtimeUpdates = ({
             if (posting.status === 'processed') {
               await onProcessed(posting.id, posting.processed_at || '');
               toast.success('Job processing completed');
+              retryCount.current = 0; // Reset retry count on success
             } else if (posting.status === 'failed') {
               onFailed(posting.description);
               toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
+              retryCount.current = 0; // Reset retry count on explicit failure
             }
           } catch (error) {
             console.error('Error processing update:', error);
-            toast.error('Error processing update');
             
-            // Reset subscription on critical errors
+            // Handle channel closure with exponential backoff
             if (error instanceof Error && error.message.includes('channel closed')) {
-              console.log('Channel closed, cleaning up subscription');
-              if (channelRef.current) {
-                supabase.removeChannel(channelRef.current);
-                channelRef.current = null;
-                isSubscribed.current = false;
-                // Attempt to reestablish subscription after a delay
-                setTimeout(() => {
-                  setupRealtimeSubscription();
-                }, 1000);
-              }
+              console.log('Channel closed, attempting reconnection');
+              handleChannelError();
+            } else {
+              toast.error('Error processing update');
+              onFailed('Error processing update');
             }
           } finally {
             isProcessingUpdate.current = false;
@@ -102,28 +100,46 @@ export const useRealtimeUpdates = ({
         console.log('Subscription status:', status);
         if (status === 'SUBSCRIBED') {
           console.log('Successfully subscribed to job updates');
+          retryCount.current = 0; // Reset retry count on successful subscription
         } else if (status === 'CHANNEL_ERROR') {
           console.error('Channel error occurred');
-          toast.error('Error connecting to real-time updates');
-          // Cleanup on channel error
-          if (channelRef.current) {
-            supabase.removeChannel(channelRef.current);
-            channelRef.current = null;
-            isSubscribed.current = false;
-          }
+          handleChannelError();
         }
       });
 
     return () => {
-      if (channelRef.current) {
-        console.log('Cleaning up subscription');
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-        isSubscribed.current = false;
-        isProcessingUpdate.current = false;
-      }
+      cleanupSubscription();
     };
   }, [currentJobId, onProcessed, onFailed]);
+
+  const handleChannelError = useCallback(() => {
+    cleanupSubscription();
+    
+    if (retryCount.current >= MAX_RETRIES) {
+      console.error('Max retries reached, giving up');
+      toast.error('Connection lost. Please try again.');
+      onFailed('Connection lost');
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, retryCount.current), 10000); // Exponential backoff with 10s max
+    retryCount.current++;
+    
+    console.log(`Retrying connection in ${delay}ms (attempt ${retryCount.current}/${MAX_RETRIES})`);
+    setTimeout(() => {
+      setupRealtimeSubscription();
+    }, delay);
+  }, [setupRealtimeSubscription, onFailed]);
+
+  const cleanupSubscription = useCallback(() => {
+    if (channelRef.current) {
+      console.log('Cleaning up subscription');
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+      isSubscribed.current = false;
+      isProcessingUpdate.current = false;
+    }
+  }, []);
 
   useEffect(() => {
     if (!currentJobId) return;
@@ -136,13 +152,6 @@ export const useRealtimeUpdates = ({
   }, [currentJobId, setupRealtimeSubscription]);
 
   return {
-    cleanup: () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-        isSubscribed.current = false;
-        isProcessingUpdate.current = false;
-      }
-    }
+    cleanup: cleanupSubscription
   };
 };
