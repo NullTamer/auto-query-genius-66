@@ -1,5 +1,5 @@
-
 import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
+  const navigate = useNavigate();
   const [jobDescription, setJobDescription] = useState("");
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -104,26 +105,12 @@ const Index = () => {
     }
   }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
 
-  const handleSignIn = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-      if (error) throw error;
-    } catch (error) {
-      toast.error('Failed to sign in');
-      console.error('Error signing in:', error);
-    }
-  };
-
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       toast.success('Signed out successfully');
+      navigate('/auth');
     } catch (error) {
       toast.error('Failed to sign out');
       console.error('Error signing out:', error);
@@ -142,11 +129,11 @@ const Index = () => {
           {!session ? (
             <Button 
               variant="outline" 
-              onClick={handleSignIn}
+              onClick={() => navigate('/auth')}
               className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
             >
               <LogIn className="h-4 w-4" />
-              Sign In with GitHub
+              Sign In
             </Button>
           ) : (
             <Button 
