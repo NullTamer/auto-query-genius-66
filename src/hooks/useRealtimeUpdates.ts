@@ -20,6 +20,8 @@ export const useRealtimeUpdates = ({
   const channelRef = useRef<any>(null);
   const isSubscribed = useRef(false);
   const isProcessingUpdate = useRef(false);
+  const lastUpdateTime = useRef<number>(0);
+  const THROTTLE_DELAY = 1000; // 1 second minimum between updates
 
   const setupRealtimeSubscription = useCallback(() => {
     if (channelRef.current || isSubscribed.current || !currentJobId) {
@@ -41,6 +43,12 @@ export const useRealtimeUpdates = ({
           filter: `id=eq.${currentJobId}`
         },
         debounce(async (payload) => {
+          const now = Date.now();
+          if (now - lastUpdateTime.current < THROTTLE_DELAY) {
+            console.log('Throttling update, too soon since last update');
+            return;
+          }
+
           if (isProcessingUpdate.current) {
             console.log('Already processing an update, skipping');
             return;
@@ -55,6 +63,7 @@ export const useRealtimeUpdates = ({
           }
 
           isProcessingUpdate.current = true;
+          lastUpdateTime.current = now;
           
           try {
             console.log('Processing job update:', posting);
@@ -70,6 +79,20 @@ export const useRealtimeUpdates = ({
           } catch (error) {
             console.error('Error processing update:', error);
             toast.error('Error processing update');
+            
+            // Reset subscription on critical errors
+            if (error instanceof Error && error.message.includes('channel closed')) {
+              console.log('Channel closed, cleaning up subscription');
+              if (channelRef.current) {
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+                isSubscribed.current = false;
+                // Attempt to reestablish subscription after a delay
+                setTimeout(() => {
+                  setupRealtimeSubscription();
+                }, 1000);
+              }
+            }
           } finally {
             isProcessingUpdate.current = false;
           }
@@ -77,6 +100,18 @@ export const useRealtimeUpdates = ({
       )
       .subscribe((status) => {
         console.log('Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to job updates');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Channel error occurred');
+          toast.error('Error connecting to real-time updates');
+          // Cleanup on channel error
+          if (channelRef.current) {
+            supabase.removeChannel(channelRef.current);
+            channelRef.current = null;
+            isSubscribed.current = false;
+          }
+        }
       });
 
     return () => {
@@ -85,6 +120,7 @@ export const useRealtimeUpdates = ({
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
         isSubscribed.current = false;
+        isProcessingUpdate.current = false;
       }
     };
   }, [currentJobId, onProcessed, onFailed]);
