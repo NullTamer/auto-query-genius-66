@@ -55,7 +55,7 @@ serve(async (req) => {
     
     if (!response.ok) {
       console.error('OpenAI API error:', aiResponse)
-      throw new Error('Failed to process with OpenAI')
+      throw new Error('Failed to process with OpenAI: ' + JSON.stringify(aiResponse))
     }
 
     const keywords = aiResponse.choices[0].message.content
@@ -63,6 +63,8 @@ serve(async (req) => {
       .split(/[\n,]/)
       .map(k => k.trim())
       .filter(k => k.length > 2)
+
+    console.log('Extracted keywords:', keywords)
 
     // Update job posting status
     const { error: updateError } = await supabase
@@ -84,11 +86,12 @@ serve(async (req) => {
       const keywordsToInsert = keywords.map(keyword => ({
         job_posting_id: jobPostingId,
         keyword,
+        frequency: 1, // Default frequency
         created_at: new Date().toISOString()
       }))
 
       const { error: keywordError } = await supabase
-        .from('keywords')
+        .from('extracted_keywords') // Changed from 'keywords' to 'extracted_keywords'
         .insert(keywordsToInsert)
 
       if (keywordError) {
