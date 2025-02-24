@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect } from "react";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
-import { Terminal, RefreshCw } from "lucide-react";
+import { Terminal, RefreshCw, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
@@ -11,11 +11,13 @@ import { useKeywords } from "@/hooks/useKeywords";
 import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
 import { generateBooleanQuery } from "@/utils/queryUtils";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const [jobDescription, setJobDescription] = useState("");
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [session, setSession] = useState<any>(null);
 
   const {
     isProcessing,
@@ -35,6 +37,20 @@ const Index = () => {
     handleRemoveKeyword,
     resetKeywords
   } = useKeywords();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleProcessed = useCallback(async (jobId: string, processedAt: string) => {
     try {
@@ -88,6 +104,32 @@ const Index = () => {
     }
   }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
 
+  const handleSignIn = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+    } catch (error) {
+      toast.error('Failed to sign in');
+      console.error('Error signing in:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      toast.success('Signed out successfully');
+    } catch (error) {
+      toast.error('Failed to sign out');
+      console.error('Error signing out:', error);
+    }
+  };
+
   // Update boolean query whenever keywords change
   useEffect(() => {
     setBooleanQuery(generateBooleanQuery(keywords));
@@ -96,6 +138,27 @@ const Index = () => {
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
       <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
+        <div className="flex justify-end p-4">
+          {!session ? (
+            <Button 
+              variant="outline" 
+              onClick={handleSignIn}
+              className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
+            >
+              <LogIn className="h-4 w-4" />
+              Sign In with GitHub
+            </Button>
+          ) : (
+            <Button 
+              variant="outline" 
+              onClick={handleSignOut}
+              className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
+            >
+              Sign Out
+            </Button>
+          )}
+        </div>
+
         <div className="text-center mb-8 md:mb-12 animate-fade-in relative">
           <div className="absolute right-0 top-0">
             {updateCount > 0 && (
