@@ -35,16 +35,50 @@ export const useJobProcessing = () => {
 
       if (sourcesError) throw sourcesError;
       if (!sources?.length) {
-        toast.error('No job sources configured');
-        return null;
+        // Create a default source if none exists
+        const { data: newSource, error: createError } = await supabase
+          .from('job_sources')
+          .insert({
+            source_name: 'default',
+            user_id: session.data.session.user.id,
+            is_public: false
+          })
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        sources = [newSource];
       }
 
-      const jobId = await JobScrapingService.processJobPosting(jobDescription, sources[0].id);
-      setCurrentJobId(jobId);
-      
+      // Create the job posting
+      const { data: jobPosting, error: insertError } = await supabase
+        .from('job_postings')
+        .insert({
+          source_id: sources[0].id,
+          user_id: session.data.session.user.id,
+          title: 'Processing...',
+          description: jobDescription,
+          posting_url: 'direct-input',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        throw insertError;
+      }
+
+      if (!jobPosting) {
+        throw new Error('Failed to create job posting');
+      }
+
+      setCurrentJobId(jobPosting.id);
       toast.success('Job processing started');
-      console.log('Processing started for job ID:', jobId);
-      return jobId;
+      console.log('Processing started for job ID:', jobPosting.id);
+      return jobPosting.id;
 
     } catch (error) {
       console.error('Error processing job:', error);
