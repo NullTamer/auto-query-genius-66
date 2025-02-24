@@ -28,7 +28,7 @@ export const useJobProcessing = () => {
       setIsProcessing(true);
       setHasError(false);
       
-      const { data: sources, error: sourcesError } = await supabase
+      let { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
         .select('*')
         .limit(1);
