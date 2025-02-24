@@ -18,13 +18,20 @@ export const useJobProcessing = () => {
     }
 
     try {
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        toast.error('Please log in to process job postings');
+        return null;
+      }
+
       processingRef.current = true;
       setIsProcessing(true);
       setHasError(false);
       
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
-        .select('*');
+        .select('*')
+        .limit(1);
 
       if (sourcesError) throw sourcesError;
       if (!sources?.length) {

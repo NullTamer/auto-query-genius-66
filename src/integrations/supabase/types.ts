@@ -54,44 +54,79 @@ export type Database = {
       job_postings: {
         Row: {
           content: string | null
+          created_at: string | null
+          description: string | null
           id: number
           is_public: boolean | null
+          posting_url: string | null
+          processed_at: string | null
+          source_id: number | null
+          status: string | null
           title: string | null
+          updated_at: string | null
           user_id: string | null
         }
         Insert: {
           content?: string | null
+          created_at?: string | null
+          description?: string | null
           id?: never
           is_public?: boolean | null
+          posting_url?: string | null
+          processed_at?: string | null
+          source_id?: number | null
+          status?: string | null
           title?: string | null
+          updated_at?: string | null
           user_id?: string | null
         }
         Update: {
           content?: string | null
+          created_at?: string | null
+          description?: string | null
           id?: never
           is_public?: boolean | null
+          posting_url?: string | null
+          processed_at?: string | null
+          source_id?: number | null
+          status?: string | null
           title?: string | null
+          updated_at?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_job_source"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "job_sources"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_sources: {
         Row: {
+          created_at: string | null
           id: number
           is_public: boolean | null
           source_name: string | null
+          updated_at: string | null
           user_id: string | null
         }
         Insert: {
+          created_at?: string | null
           id?: never
           is_public?: boolean | null
           source_name?: string | null
+          updated_at?: string | null
           user_id?: string | null
         }
         Update: {
+          created_at?: string | null
           id?: never
           is_public?: boolean | null
           source_name?: string | null
+          updated_at?: string | null
           user_id?: string | null
         }
         Relationships: []

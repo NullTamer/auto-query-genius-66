@@ -9,11 +9,19 @@ export class JobScrapingService {
 
   static async processJobPosting(jobDescription: string, sourceId: string): Promise<string> {
     try {
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('User must be authenticated to process job postings');
+      }
+
+      const userId = session.data.session.user.id;
+
       // Create initial job posting record
       const { data: jobPosting, error: insertError } = await supabase
         .from('job_postings')
         .insert({
           source_id: sourceId,
+          user_id: userId, // Set the user_id
           title: 'Processing...',
           description: jobDescription,
           posting_url: 'direct-input',
@@ -25,6 +33,7 @@ export class JobScrapingService {
         .single();
 
       if (insertError || !jobPosting) {
+        console.error('Insert error:', insertError);
         throw new Error(`Failed to create job posting: ${insertError?.message}`);
       }
 
@@ -67,6 +76,11 @@ export class JobScrapingService {
     details?: Partial<JobPosting>
   ): Promise<void> {
     try {
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('User must be authenticated to update job postings');
+      }
+
       const { error } = await supabase
         .from('job_postings')
         .update({
@@ -74,7 +88,8 @@ export class JobScrapingService {
           updated_at: new Date().toISOString(),
           ...details
         })
-        .eq('id', postingId);
+        .eq('id', postingId)
+        .eq('user_id', session.data.session.user.id); // Ensure we only update user's own posts
 
       if (error) throw error;
     } catch (error) {
@@ -85,10 +100,16 @@ export class JobScrapingService {
 
   static async retryJobPosting(jobPostingId: string): Promise<void> {
     try {
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('User must be authenticated to retry job postings');
+      }
+
       const { data: jobPosting, error: fetchError } = await supabase
         .from('job_postings')
         .select('*')
         .eq('id', jobPostingId)
+        .eq('user_id', session.data.session.user.id) // Only fetch user's own posts
         .single();
 
       if (fetchError || !jobPosting) {
