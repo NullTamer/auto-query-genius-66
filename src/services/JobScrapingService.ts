@@ -21,7 +21,7 @@ export class JobScrapingService {
         .from('job_postings')
         .insert({
           source_id: sourceId,
-          user_id: userId, // Set the user_id
+          user_id: userId,
           title: 'Processing...',
           description: jobDescription,
           posting_url: 'direct-input',
@@ -37,27 +37,21 @@ export class JobScrapingService {
         throw new Error(`Failed to create job posting: ${insertError?.message}`);
       }
 
-      // Create a promise that rejects after timeout
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timed out')), this.TIMEOUT);
-      });
-
+      console.log('Invoking edge function for job:', jobPosting.id);
+      
       // Process with timeout
-      const scrapePromise = supabase.functions.invoke('scrape-job-posting', {
+      const { data: scrapeData, error: scrapeError } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription,
           jobPostingId: jobPosting.id 
         }
       });
 
-      // Race between the scrape and timeout
-      const { data: scrapeData, error: scrapeError } = await Promise.race([
-        scrapePromise,
-        timeoutPromise
-      ]) as any;
-
       if (scrapeError) {
-        await this.updateJobPostingStatus(jobPosting.id, 'failed');
+        console.error('Edge function error:', scrapeError);
+        await this.updateJobPostingStatus(jobPosting.id, 'failed', {
+          description: `Processing failed: ${scrapeError.message}`
+        });
         throw new Error(`Processing failed: ${scrapeError.message}`);
       }
 
@@ -89,9 +83,12 @@ export class JobScrapingService {
           ...details
         })
         .eq('id', postingId)
-        .eq('user_id', session.data.session.user.id); // Ensure we only update user's own posts
+        .eq('user_id', session.data.session.user.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error updating status:', error);
+        throw error;
+      }
     } catch (error) {
       console.error('Error updating job posting status:', error);
       throw error;
@@ -109,7 +106,7 @@ export class JobScrapingService {
         .from('job_postings')
         .select('*')
         .eq('id', jobPostingId)
-        .eq('user_id', session.data.session.user.id) // Only fetch user's own posts
+        .eq('user_id', session.data.session.user.id)
         .single();
 
       if (fetchError || !jobPosting) {
@@ -125,8 +122,12 @@ export class JobScrapingService {
         }
       });
 
-      if (scrapeError) throw scrapeError;
+      if (scrapeError) {
+        console.error('Error retrying job:', scrapeError);
+        throw scrapeError;
+      }
 
+      console.log('Job retry initiated successfully');
     } catch (error) {
       console.error('Error retrying job posting:', error);
       throw error;

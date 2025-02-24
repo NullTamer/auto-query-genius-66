@@ -50,35 +50,13 @@ export const useJobProcessing = () => {
         sources = [newSource];
       }
 
-      // Create the job posting
-      const { data: jobPosting, error: insertError } = await supabase
-        .from('job_postings')
-        .insert({
-          source_id: sources[0].id,
-          user_id: session.data.session.user.id,
-          title: 'Processing...',
-          description: jobDescription,
-          posting_url: 'direct-input',
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error('Insert error:', insertError);
-        throw insertError;
-      }
-
-      if (!jobPosting) {
-        throw new Error('Failed to create job posting');
-      }
-
-      setCurrentJobId(jobPosting.id);
+      // Process the job using JobScrapingService
+      const jobId = await JobScrapingService.processJobPosting(jobDescription, sources[0].id.toString());
+      
+      setCurrentJobId(jobId);
       toast.success('Job processing started');
-      console.log('Processing started for job ID:', jobPosting.id);
-      return jobPosting.id;
+      console.log('Processing started for job ID:', jobId);
+      return jobId;
 
     } catch (error) {
       console.error('Error processing job:', error);
