@@ -56,7 +56,7 @@ export const useRealtimeUpdates = ({
     }, delay);
   }, [cleanupSubscription, onFailed]);
 
-  const setupRealtimeSubscription = useCallback(() => {
+  const setupRealtimeSubscription = useCallback(async () => {
     if (channelRef.current || isSubscribed.current || !currentJobId) {
       console.log('Subscription already exists or no job ID');
       return;
@@ -65,107 +65,112 @@ export const useRealtimeUpdates = ({
     console.log('Setting up new real-time subscription');
     isSubscribed.current = true;
 
-    // First verify the job exists
-    supabase
-      .from('job_postings')
-      .select('id')
-      .eq('id', currentJobId)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          console.error('Job not found:', error);
-          onFailed('Job not found');
-          return;
-        }
+    try {
+      // First verify the job exists
+      const { data, error } = await supabase
+        .from('job_postings')
+        .select('id')
+        .eq('id', currentJobId)
+        .single();
 
-        channelRef.current = supabase
-          .channel('job-updates')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'job_postings',
-              filter: `id=eq.${currentJobId}`
-            },
-            debounce(async (payload) => {
-              const now = Date.now();
-              if (now - lastUpdateTime.current < THROTTLE_DELAY) {
-                console.log('Throttling update, too soon since last update');
-                return;
-              }
+      if (error || !data) {
+        console.error('Job not found:', error);
+        onFailed('Job not found');
+        return;
+      }
 
-              if (isProcessingUpdate.current) {
-                console.log('Already processing an update, skipping');
-                return;
-              }
-
-              const posting = payload.new as JobPosting;
-              const newState = `${posting.status}-${posting.processed_at}`;
-              
-              if (newState === lastProcessedState.current) {
-                console.log('Skipping duplicate update');
-                return;
-              }
-
-              isProcessingUpdate.current = true;
-              lastUpdateTime.current = now;
-              
-              try {
-                console.log('Processing job update:', posting);
-                lastProcessedState.current = newState;
-
-                if (posting.status === 'processed') {
-                  await onProcessed(posting.id, posting.processed_at || '');
-                  toast.success('Job processing completed');
-                  retryCount.current = 0; // Reset retry count on success
-                } else if (posting.status === 'failed') {
-                  onFailed(posting.description);
-                  toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
-                  retryCount.current = 0; // Reset retry count on explicit failure
-                }
-              } catch (error) {
-                console.error('Error processing update:', error);
-                
-                if (error instanceof Error && error.message.includes('channel closed')) {
-                  handleChannelError();
-                } else {
-                  toast.error('Error processing job update');
-                  onFailed('Error processing update');
-                }
-              } finally {
-                isProcessingUpdate.current = false;
-              }
-            }, 1000)
-          )
-          .subscribe((status) => {
-            console.log('Subscription status:', status);
-            if (status === 'SUBSCRIBED') {
-              console.log('Successfully subscribed to job updates');
-              retryCount.current = 0; // Reset retry count on successful subscription
-            } else if (status === 'CHANNEL_ERROR') {
-              console.error('Channel error occurred');
-              handleChannelError();
-            } else if (status === 'CLOSED') {
-              console.error('Channel closed');
-              handleChannelError();
+      channelRef.current = supabase
+        .channel('job-updates')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'job_postings',
+            filter: `id=eq.${currentJobId}`
+          },
+          debounce(async (payload) => {
+            const now = Date.now();
+            if (now - lastUpdateTime.current < THROTTLE_DELAY) {
+              console.log('Throttling update, too soon since last update');
+              return;
             }
-          });
-      })
-      .catch((error) => {
-        console.error('Error verifying job:', error);
-        onFailed('Error verifying job existence');
-      });
 
-    return () => {
-      cleanupSubscription();
-    };
+            if (isProcessingUpdate.current) {
+              console.log('Already processing an update, skipping');
+              return;
+            }
+
+            const posting = payload.new as JobPosting;
+            const newState = `${posting.status}-${posting.processed_at}`;
+            
+            if (newState === lastProcessedState.current) {
+              console.log('Skipping duplicate update');
+              return;
+            }
+
+            isProcessingUpdate.current = true;
+            lastUpdateTime.current = now;
+            
+            try {
+              console.log('Processing job update:', posting);
+              lastProcessedState.current = newState;
+
+              if (posting.status === 'processed') {
+                await onProcessed(posting.id, posting.processed_at || '');
+                toast.success('Job processing completed');
+                retryCount.current = 0; // Reset retry count on success
+              } else if (posting.status === 'failed') {
+                onFailed(posting.description);
+                toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
+                retryCount.current = 0; // Reset retry count on explicit failure
+              }
+            } catch (error) {
+              console.error('Error processing update:', error);
+              
+              if (error instanceof Error && error.message.includes('channel closed')) {
+                handleChannelError();
+              } else {
+                toast.error('Error processing job update');
+                onFailed('Error processing update');
+              }
+            } finally {
+              isProcessingUpdate.current = false;
+            }
+          }, 1000)
+        )
+        .subscribe((status) => {
+          console.log('Subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to job updates');
+            retryCount.current = 0; // Reset retry count on successful subscription
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('Channel error occurred');
+            handleChannelError();
+          } else if (status === 'CLOSED') {
+            console.error('Channel closed');
+            handleChannelError();
+          }
+        });
+
+      return () => {
+        cleanupSubscription();
+      };
+    } catch (error) {
+      console.error('Error setting up subscription:', error);
+      onFailed('Error setting up subscription');
+      isSubscribed.current = false;
+    }
   }, [currentJobId, onProcessed, onFailed, handleChannelError, cleanupSubscription]);
 
   useEffect(() => {
     if (!currentJobId) return;
     
-    const cleanup = setupRealtimeSubscription();
+    let cleanup: (() => void) | undefined;
+    setupRealtimeSubscription().then(result => {
+      cleanup = result;
+    });
+
     return () => {
       if (cleanup) cleanup();
       isProcessingUpdate.current = false;
