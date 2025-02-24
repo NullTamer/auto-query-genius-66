@@ -19,6 +19,7 @@ export const useRealtimeUpdates = ({
   const lastProcessedState = useRef<string | null>(null);
   const channelRef = useRef<any>(null);
   const isSubscribed = useRef(false);
+  const isProcessingUpdate = useRef(false);
 
   const setupRealtimeSubscription = useCallback(() => {
     if (channelRef.current || isSubscribed.current || !currentJobId) {
@@ -36,32 +37,41 @@ export const useRealtimeUpdates = ({
         {
           event: '*',
           schema: 'public',
-          table: 'job_postings'
+          table: 'job_postings',
+          filter: `id=eq.${currentJobId}`
         },
         debounce(async (payload) => {
-          const posting = payload.new as JobPosting;
-          
-          if (posting.id !== currentJobId) {
-            console.log('Ignoring update for different job:', posting.id);
+          if (isProcessingUpdate.current) {
+            console.log('Already processing an update, skipping');
             return;
           }
 
+          const posting = payload.new as JobPosting;
           const newState = `${posting.status}-${posting.processed_at}`;
           
           if (newState === lastProcessedState.current) {
             console.log('Skipping duplicate update');
             return;
           }
-          
-          lastProcessedState.current = newState;
-          console.log('Processing job update:', posting);
 
-          if (posting.status === 'processed') {
-            onProcessed(posting.id, posting.processed_at || '');
-            toast.success('Job processing completed');
-          } else if (posting.status === 'failed') {
-            onFailed(posting.description);
-            toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
+          isProcessingUpdate.current = true;
+          
+          try {
+            console.log('Processing job update:', posting);
+            lastProcessedState.current = newState;
+
+            if (posting.status === 'processed') {
+              await onProcessed(posting.id, posting.processed_at || '');
+              toast.success('Job processing completed');
+            } else if (posting.status === 'failed') {
+              onFailed(posting.description);
+              toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
+            }
+          } catch (error) {
+            console.error('Error processing update:', error);
+            toast.error('Error processing update');
+          } finally {
+            isProcessingUpdate.current = false;
           }
         }, 1000)
       )
@@ -85,6 +95,7 @@ export const useRealtimeUpdates = ({
     const cleanup = setupRealtimeSubscription();
     return () => {
       if (cleanup) cleanup();
+      isProcessingUpdate.current = false;
     };
   }, [currentJobId, setupRealtimeSubscription]);
 
@@ -94,6 +105,7 @@ export const useRealtimeUpdates = ({
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
         isSubscribed.current = false;
+        isProcessingUpdate.current = false;
       }
     }
   };

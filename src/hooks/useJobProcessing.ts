@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { JobScrapingService } from "@/services/JobScrapingService";
 import { toast } from "sonner";
@@ -9,9 +9,16 @@ export const useJobProcessing = () => {
   const [hasError, setHasError] = useState(false);
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const processingRef = useRef(false);
 
   const processJob = useCallback(async (jobDescription: string) => {
+    if (processingRef.current) {
+      console.log('Already processing a job, skipping');
+      return null;
+    }
+
     try {
+      processingRef.current = true;
       setIsProcessing(true);
       setHasError(false);
       
@@ -37,6 +44,8 @@ export const useJobProcessing = () => {
       toast.error('Failed to process job posting');
       setHasError(true);
       return null;
+    } finally {
+      processingRef.current = false;
     }
   }, []);
 
