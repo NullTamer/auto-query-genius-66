@@ -11,126 +11,116 @@ export type Database = {
     Tables: {
       extracted_keywords: {
         Row: {
-          category: string | null
-          created_at: string
-          frequency: number
-          id: string
-          job_posting_id: string
-          keyword: string
+          id: number
+          is_public: boolean | null
+          keyword: string | null
+          user_id: string | null
         }
         Insert: {
-          category?: string | null
-          created_at?: string
-          frequency?: number
-          id?: string
-          job_posting_id: string
-          keyword: string
+          id?: never
+          is_public?: boolean | null
+          keyword?: string | null
+          user_id?: string | null
         }
         Update: {
-          category?: string | null
-          created_at?: string
-          frequency?: number
-          id?: string
-          job_posting_id?: string
-          keyword?: string
+          id?: never
+          is_public?: boolean | null
+          keyword?: string | null
+          user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "extracted_keywords_job_posting_id_fkey"
-            columns: ["job_posting_id"]
-            isOneToOne: false
-            referencedRelation: "job_postings"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_job_posting"
-            columns: ["job_posting_id"]
-            isOneToOne: false
-            referencedRelation: "job_postings"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      job_descriptions: {
+        Row: {
+          description: string | null
+          id: number
+          is_public: boolean | null
+          user_id: string | null
+        }
+        Insert: {
+          description?: string | null
+          id?: never
+          is_public?: boolean | null
+          user_id?: string | null
+        }
+        Update: {
+          description?: string | null
+          id?: never
+          is_public?: boolean | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       job_postings: {
         Row: {
-          company: string | null
-          created_at: string
-          description: string | null
-          external_id: string | null
-          id: string
-          location: string | null
-          posting_url: string
-          processed_at: string | null
-          source_id: string
-          status: Database["public"]["Enums"]["job_posting_status"]
-          title: string
-          updated_at: string
+          content: string | null
+          id: number
+          is_public: boolean | null
+          title: string | null
+          user_id: string | null
         }
         Insert: {
-          company?: string | null
-          created_at?: string
-          description?: string | null
-          external_id?: string | null
-          id?: string
-          location?: string | null
-          posting_url: string
-          processed_at?: string | null
-          source_id: string
-          status?: Database["public"]["Enums"]["job_posting_status"]
-          title: string
-          updated_at?: string
+          content?: string | null
+          id?: never
+          is_public?: boolean | null
+          title?: string | null
+          user_id?: string | null
         }
         Update: {
-          company?: string | null
-          created_at?: string
-          description?: string | null
-          external_id?: string | null
-          id?: string
-          location?: string | null
-          posting_url?: string
-          processed_at?: string | null
-          source_id?: string
-          status?: Database["public"]["Enums"]["job_posting_status"]
-          title?: string
-          updated_at?: string
+          content?: string | null
+          id?: never
+          is_public?: boolean | null
+          title?: string | null
+          user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "fk_source"
-            columns: ["source_id"]
-            isOneToOne: false
-            referencedRelation: "job_sources"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "job_postings_source_id_fkey"
-            columns: ["source_id"]
-            isOneToOne: false
-            referencedRelation: "job_sources"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       job_sources: {
         Row: {
-          base_url: string
-          created_at: string | null
-          id: string
-          name: string
+          id: number
+          is_public: boolean | null
+          source_name: string | null
+          user_id: string | null
         }
         Insert: {
-          base_url: string
-          created_at?: string | null
-          id?: string
-          name: string
+          id?: never
+          is_public?: boolean | null
+          source_name?: string | null
+          user_id?: string | null
         }
         Update: {
-          base_url?: string
-          created_at?: string | null
-          id?: string
-          name?: string
+          id?: never
+          is_public?: boolean | null
+          source_name?: string | null
+          user_id?: string | null
         }
         Relationships: []
+      }
+      keywords: {
+        Row: {
+          id: number
+          job_posting_id: number | null
+          keyword: string | null
+        }
+        Insert: {
+          id?: never
+          job_posting_id?: number | null
+          keyword?: string | null
+        }
+        Update: {
+          id?: never
+          job_posting_id?: number | null
+          keyword?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keywords_job_posting_id_fkey"
+            columns: ["job_posting_id"]
+            isOneToOne: false
+            referencedRelation: "job_postings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
