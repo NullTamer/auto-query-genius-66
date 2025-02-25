@@ -28,19 +28,16 @@ export const useJobProcessing = () => {
       setIsProcessing(true);
       setHasError(false);
       
-      let { data: sources, error: sourcesError } = await supabase
+      const { data: sources } = await supabase
         .from('job_sources')
         .select('*')
         .limit(1);
 
-      if (sourcesError) throw sourcesError;
       if (!sources?.length) {
-        // Create a default source if none exists
         const { data: newSource, error: createError } = await supabase
           .from('job_sources')
           .insert({
             source_name: 'default',
-            user_id: session.data.session.user.id,
             is_public: false
           })
           .select()
@@ -50,8 +47,8 @@ export const useJobProcessing = () => {
         sources = [newSource];
       }
 
-      // Process the job using JobScrapingService
       const jobId = await JobScrapingService.processJobPosting(jobDescription, sources[0].id.toString());
+      if (!jobId) throw new Error('Failed to get job ID');
       
       setCurrentJobId(jobId);
       toast.success('Job processing started');
@@ -62,6 +59,7 @@ export const useJobProcessing = () => {
       console.error('Error processing job:', error);
       toast.error('Failed to process job posting');
       setHasError(true);
+      setIsProcessing(false); // Important: Clear processing state on error
       return null;
     } finally {
       processingRef.current = false;

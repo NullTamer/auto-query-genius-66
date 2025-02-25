@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
@@ -55,13 +56,14 @@ const Index = () => {
 
   const handleProcessed = useCallback(async (jobId: string, processedAt: string) => {
     try {
+      console.log('Job processed, fetching keywords for ID:', jobId);
       await debouncedFetchKeywords(jobId);
       setLastScrapeTime(processedAt);
+      setIsProcessing(false);
     } catch (error) {
-      console.error('Error fetching keywords:', error);
+      console.error('Error handling processed job:', error);
       toast.error('Failed to fetch keywords');
       setHasError(true);
-    } finally {
       setIsProcessing(false);
     }
   }, [debouncedFetchKeywords, setLastScrapeTime, setIsProcessing, setHasError]);
@@ -70,6 +72,9 @@ const Index = () => {
     setHasError(true);
     setIsProcessing(false);
     resetKeywords();
+    if (description) {
+      toast.error(`Processing failed: ${description}`);
+    }
   }, [setHasError, setIsProcessing, resetKeywords]);
 
   useRealtimeUpdates({
@@ -79,6 +84,12 @@ const Index = () => {
   });
 
   const handleGenerateQuery = useCallback(async () => {
+    if (!session) {
+      toast.error('Please sign in to process jobs');
+      navigate('/auth');
+      return;
+    }
+
     resetKeywords();
     setBooleanQuery("");
     const jobId = await processJob(jobDescription);
@@ -86,7 +97,7 @@ const Index = () => {
       setIsProcessing(true);
       setHasError(false);
     }
-  }, [jobDescription, processJob, resetKeywords, setIsProcessing, setHasError]);
+  }, [jobDescription, processJob, resetKeywords, setIsProcessing, setHasError, session, navigate]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
