@@ -14,6 +14,7 @@ export const useKeywords = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [updateCount, setUpdateCount] = useState(0);
   const lastFetchedJobId = useRef<string | null>(null);
+  const fetchInProgress = useRef(false);
 
   const debouncedFetchKeywords = useCallback(
     debounce(async (jobId: string) => {
@@ -23,35 +24,49 @@ export const useKeywords = () => {
         return;
       }
 
+      // Prevent concurrent fetches
+      if (fetchInProgress.current) {
+        console.log('Fetch already in progress, skipping');
+        return;
+      }
+
       try {
+        fetchInProgress.current = true;
         console.log('Fetching keywords for job ID:', jobId);
+        
         const { data: keywordsData, error } = await supabase
           .from('extracted_keywords')
           .select('*')
           .eq('job_posting_id', jobId);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error fetching keywords:', error);
+          throw error;
+        }
+
+        console.log('Received keywords data:', keywordsData);
 
         if (keywordsData) {
           lastFetchedJobId.current = jobId;
           const formattedKeywords = keywordsData.map(k => ({
             keyword: k.keyword,
             category: k.category || undefined,
-            frequency: k.frequency
+            frequency: k.frequency || 1
           }));
           
-          // Only update if keywords have changed
-          if (JSON.stringify(formattedKeywords) !== JSON.stringify(keywords)) {
-            setKeywords(formattedKeywords);
-            setUpdateCount(prev => prev + 1);
-          }
+          console.log('Formatted keywords:', formattedKeywords);
+          
+          setKeywords(formattedKeywords);
+          setUpdateCount(prev => prev + 1);
         }
       } catch (error) {
         console.error('Error fetching keywords:', error);
         toast.error('Failed to fetch keywords');
+      } finally {
+        fetchInProgress.current = false;
       }
     }, 500),
-    [keywords]
+    []
   );
 
   const handleRemoveKeyword = useCallback((keywordToRemove: string) => {
@@ -62,6 +77,7 @@ export const useKeywords = () => {
     setKeywords([]);
     setUpdateCount(0);
     lastFetchedJobId.current = null;
+    fetchInProgress.current = false;
   }, []);
 
   return {

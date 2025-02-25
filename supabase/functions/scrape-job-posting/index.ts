@@ -35,6 +35,7 @@ serve(async (req) => {
     console.log('Extracted keywords:', keywords);
 
     await jobRepository.enableRealtimeForJob('job_postings');
+    await jobRepository.enableRealtimeForJob('extracted_keywords'); // Enable realtime for keywords too
     
     const processedAt = new Date().toISOString();
     await jobRepository.updateJobStatus(jobPostingId, 'processed', processedAt);
