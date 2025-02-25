@@ -45,8 +45,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let requestData;
   try {
-    const { jobDescription, jobPostingId } = await req.json();
+    // Parse request body once and store it
+    requestData = await req.json();
+    const { jobDescription, jobPostingId } = requestData;
     const apiKey = Deno.env.get('GEMINI_API_KEY');
 
     if (!apiKey) {
@@ -116,7 +119,7 @@ serve(async (req) => {
 
     console.log('Extracted keywords:', keywords);
 
-    // Update job posting status
+    // Update job posting status first
     const { error: updateError } = await supabase
       .from('job_postings')
       .update({
@@ -131,14 +134,14 @@ serve(async (req) => {
       throw updateError;
     }
 
-    // Insert extracted keywords with explicit created_at
+    // Insert extracted keywords
     if (keywords.length > 0) {
       const now = new Date().toISOString();
       const keywordsToInsert = keywords.map(keyword => ({
         job_posting_id: jobPostingId,
         keyword,
         frequency: 1,
-        created_at: now // Explicitly set created_at
+        created_at: now
       }));
 
       const { error: keywordError } = await supabase
@@ -169,10 +172,9 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in edge function:', error);
     
-    // Ensure the job posting is marked as failed
+    // Use the stored requestData for updating failed status
     try {
-      const { jobPostingId } = await req.json();
-      if (jobPostingId) {
+      if (requestData?.jobPostingId) {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(supabaseUrl, supabaseKey);
@@ -183,7 +185,7 @@ serve(async (req) => {
             status: 'failed',
             updated_at: new Date().toISOString()
           })
-          .eq('id', jobPostingId);
+          .eq('id', requestData.jobPostingId);
       }
     } catch (updateError) {
       console.error('Error updating job status to failed:', updateError);
