@@ -21,6 +21,7 @@ const retryWithBackoff = async <T>(
     try {
       if (i > 0) {
         const backoffDelay = baseDelay * Math.pow(2, i - 1);
+        console.log(`Retry ${i + 1} with delay ${backoffDelay}ms`);
         await delay(backoffDelay);
       }
       return await fn();
@@ -28,9 +29,10 @@ const retryWithBackoff = async <T>(
       console.error(`Attempt ${i + 1} failed:`, error);
       lastError = error;
       
-      if (error.status !== 429 && error.status !== 404) {
-        throw error;
+      if (i < maxRetries - 1 && (error.status === 429 || error.status === 404)) {
+        continue;
       }
+      throw error;
     }
   }
   
@@ -40,30 +42,30 @@ const retryWithBackoff = async <T>(
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { jobDescription, jobPostingId } = await req.json()
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    const { jobDescription, jobPostingId } = await req.json();
+    const apiKey = Deno.env.get('GEMINI_API_KEY');
 
     if (!apiKey) {
-      throw new Error('Gemini API key not configured')
+      throw new Error('Gemini API key not configured');
     }
 
-    // Initialize Supabase client with admin privileges
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('Processing job:', jobPostingId)
+    console.log('Processing job:', jobPostingId);
 
-    // Use Gemini to analyze the job description
+    // Process with Gemini API
     const processWithGemini = async () => {
-      await delay(2000); // 2s delay between requests
+      await delay(2000); // 2s throttle between requests
       
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: {
@@ -94,7 +96,7 @@ serve(async (req) => {
       if (!response.ok) {
         const error = await response.json();
         console.error('Gemini API error:', error);
-        throw new Error('Failed to process with Gemini: ' + JSON.stringify(error));
+        throw new Error(`Failed to process with Gemini: ${JSON.stringify(error)}`);
       }
 
       return await response.json();
@@ -129,13 +131,14 @@ serve(async (req) => {
       throw updateError;
     }
 
-    // Insert extracted keywords
+    // Insert extracted keywords with explicit created_at
     if (keywords.length > 0) {
+      const now = new Date().toISOString();
       const keywordsToInsert = keywords.map(keyword => ({
         job_posting_id: jobPostingId,
         keyword,
         frequency: 1,
-        created_at: new Date().toISOString()
+        created_at: now // Explicitly set created_at
       }));
 
       const { error: keywordError } = await supabase
@@ -165,6 +168,27 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in edge function:', error);
+    
+    // Ensure the job posting is marked as failed
+    try {
+      const { jobPostingId } = await req.json();
+      if (jobPostingId) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        
+        await supabase
+          .from('job_postings')
+          .update({
+            status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', jobPostingId);
+      }
+    } catch (updateError) {
+      console.error('Error updating job status to failed:', updateError);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: false, 
