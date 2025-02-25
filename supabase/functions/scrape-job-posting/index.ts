@@ -1,53 +1,17 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const retryWithBackoff = async <T>(
-  fn: () => Promise<T>,
-  maxRetries = 3,
-  baseDelay = 1000
-): Promise<T> => {
-  let lastError: any;
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      if (i > 0) {
-        const backoffDelay = baseDelay * Math.pow(2, i - 1);
-        console.log(`Retry ${i + 1} with delay ${backoffDelay}ms`);
-        await delay(backoffDelay);
-      }
-      return await fn();
-    } catch (error) {
-      console.error(`Attempt ${i + 1} failed:`, error);
-      lastError = error;
-      
-      if (i < maxRetries - 1 && (error.status === 429 || error.status === 404)) {
-        continue;
-      }
-      throw error;
-    }
-  }
-  
-  throw lastError;
-};
+import { corsHeaders, retryWithBackoff } from './utils.ts';
+import { GeminiService } from './gemini-service.ts';
+import { JobRepository } from './job-repository.ts';
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   let requestData;
   try {
-    // Parse request body once and store it
     requestData = await req.json();
     const { jobDescription, jobPostingId } = requestData;
     const apiKey = Deno.env.get('GEMINI_API_KEY');
@@ -56,106 +20,25 @@ serve(async (req) => {
       throw new Error('Gemini API key not configured');
     }
 
-    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const geminiService = new GeminiService(apiKey);
+    const jobRepository = new JobRepository(supabaseUrl, supabaseKey);
 
     console.log('Processing job:', jobPostingId);
 
-    // Process with Gemini API
-    const processWithGemini = async () => {
-      await delay(2000); // 2s throttle between requests
-      
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `Extract the most important technical keywords from this job description. Return only a list of keywords, lowercase, no explanations:\n\n${jobDescription}`
-              }]
-            }],
-            generationConfig: {
-              temperature: 0.3,
-              topK: 32,
-              topP: 1,
-              maxOutputTokens: 1024,
-            },
-            safetySettings: [
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_NONE"
-              }
-            ]
-          })
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('Gemini API error:', error);
-        throw new Error(`Failed to process with Gemini: ${JSON.stringify(error)}`);
-      }
-
-      return await response.json();
-    };
-
-    const aiResponse = await retryWithBackoff(processWithGemini);
-    
-    if (!aiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
-      throw new Error('Invalid response from Gemini API');
-    }
-
-    const keywords = aiResponse.candidates[0].content.parts[0].text
-      .toLowerCase()
-      .split(/[\n,]/)
-      .map(k => k.trim())
-      .filter(k => k.length > 2);
+    const keywords = await retryWithBackoff(async () => {
+      return await geminiService.extractKeywords(jobDescription);
+    });
 
     console.log('Extracted keywords:', keywords);
 
-    // Enable realtime on job_postings table
-    await supabase.rpc('enable_realtime_for_job', { table_name: 'job_postings' });
-
-    // Update job posting status first
-    const { error: updateError } = await supabase
-      .from('job_postings')
-      .update({
-        status: 'processed',
-        processed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', jobPostingId);
-
-    if (updateError) {
-      console.error('Error updating job posting:', updateError);
-      throw updateError;
-    }
-
-    // Insert extracted keywords
-    if (keywords.length > 0) {
-      const now = new Date().toISOString();
-      const keywordsToInsert = keywords.map(keyword => ({
-        job_posting_id: jobPostingId,
-        keyword,
-        frequency: 1,
-        created_at: now
-      }));
-
-      const { error: keywordError } = await supabase
-        .from('extracted_keywords')
-        .insert(keywordsToInsert);
-
-      if (keywordError) {
-        console.error('Error inserting keywords:', keywordError);
-        throw keywordError;
-      }
-    }
+    await jobRepository.enableRealtimeForJob('job_postings');
+    
+    const processedAt = new Date().toISOString();
+    await jobRepository.updateJobStatus(jobPostingId, 'processed', processedAt);
+    await jobRepository.insertKeywords(jobPostingId, keywords);
 
     return new Response(
       JSON.stringify({ 
@@ -179,15 +62,8 @@ serve(async (req) => {
       if (requestData?.jobPostingId) {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-        const supabase = createClient(supabaseUrl, supabaseKey);
-        
-        await supabase
-          .from('job_postings')
-          .update({
-            status: 'failed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', requestData.jobPostingId);
+        const jobRepository = new JobRepository(supabaseUrl, supabaseKey);
+        await jobRepository.updateJobStatus(requestData.jobPostingId, 'failed');
       }
     } catch (updateError) {
       console.error('Error updating job status to failed:', updateError);
