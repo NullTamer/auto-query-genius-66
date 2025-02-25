@@ -8,6 +8,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> => {
+  let lastError: any;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      if (i > 0) {
+        const backoffDelay = baseDelay * Math.pow(2, i - 1);
+        await delay(backoffDelay);
+      }
+      return await fn();
+    } catch (error) {
+      console.error(`Attempt ${i + 1} failed:`, error);
+      lastError = error;
+      
+      if (error.status !== 429 && error.status !== 404) {
+        throw error;
+      }
+    }
+  }
+  
+  throw lastError;
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -16,10 +45,10 @@ serve(async (req) => {
 
   try {
     const { jobDescription, jobPostingId } = await req.json()
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY')
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
 
-    if (!openAIApiKey) {
-      throw new Error('OpenAI API key not configured')
+    if (!apiKey) {
+      throw new Error('Gemini API key not configured')
     }
 
     // Initialize Supabase client with admin privileges
@@ -29,42 +58,61 @@ serve(async (req) => {
 
     console.log('Processing job:', jobPostingId)
 
-    // Use OpenAI to analyze the job description
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: 'Extract the most important technical keywords from this job description. Return only a list of keywords, lowercase, no explanations.'
+    // Use Gemini to analyze the job description
+    const processWithGemini = async () => {
+      await delay(2000); // 2s delay between requests
+      
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          {
-            role: 'user',
-            content: jobDescription
-          }
-        ]
-      })
-    })
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `Extract the most important technical keywords from this job description. Return only a list of keywords, lowercase, no explanations:\n\n${jobDescription}`
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.3,
+              topK: 32,
+              topP: 1,
+              maxOutputTokens: 1024,
+            },
+            safetySettings: [
+              {
+                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                threshold: "BLOCK_NONE"
+              }
+            ]
+          })
+        }
+      );
 
-    const aiResponse = await response.json()
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Gemini API error:', error);
+        throw new Error('Failed to process with Gemini: ' + JSON.stringify(error));
+      }
+
+      return await response.json();
+    };
+
+    const aiResponse = await retryWithBackoff(processWithGemini);
     
-    if (!response.ok) {
-      console.error('OpenAI API error:', aiResponse)
-      throw new Error('Failed to process with OpenAI: ' + JSON.stringify(aiResponse))
+    if (!aiResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
+      throw new Error('Invalid response from Gemini API');
     }
 
-    const keywords = aiResponse.choices[0].message.content
+    const keywords = aiResponse.candidates[0].content.parts[0].text
       .toLowerCase()
       .split(/[\n,]/)
       .map(k => k.trim())
-      .filter(k => k.length > 2)
+      .filter(k => k.length > 2);
 
-    console.log('Extracted keywords:', keywords)
+    console.log('Extracted keywords:', keywords);
 
     // Update job posting status
     const { error: updateError } = await supabase
@@ -74,11 +122,11 @@ serve(async (req) => {
         processed_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .eq('id', jobPostingId)
+      .eq('id', jobPostingId);
 
     if (updateError) {
-      console.error('Error updating job posting:', updateError)
-      throw updateError
+      console.error('Error updating job posting:', updateError);
+      throw updateError;
     }
 
     // Insert extracted keywords
@@ -86,17 +134,17 @@ serve(async (req) => {
       const keywordsToInsert = keywords.map(keyword => ({
         job_posting_id: jobPostingId,
         keyword,
-        frequency: 1, // Default frequency
+        frequency: 1,
         created_at: new Date().toISOString()
-      }))
+      }));
 
       const { error: keywordError } = await supabase
-        .from('extracted_keywords') // Changed from 'keywords' to 'extracted_keywords'
-        .insert(keywordsToInsert)
+        .from('extracted_keywords')
+        .insert(keywordsToInsert);
 
       if (keywordError) {
-        console.error('Error inserting keywords:', keywordError)
-        throw keywordError
+        console.error('Error inserting keywords:', keywordError);
+        throw keywordError;
       }
     }
 
@@ -113,10 +161,10 @@ serve(async (req) => {
           'Content-Type': 'application/json'
         }
       }
-    )
+    );
 
   } catch (error) {
-    console.error('Error in edge function:', error)
+    console.error('Error in edge function:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -129,6 +177,6 @@ serve(async (req) => {
           'Content-Type': 'application/json'
         }
       }
-    )
+    );
   }
-})
+});
