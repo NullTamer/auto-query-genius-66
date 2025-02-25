@@ -119,6 +119,9 @@ serve(async (req) => {
 
     console.log('Extracted keywords:', keywords);
 
+    // Enable realtime on job_postings table
+    await supabase.rpc('enable_realtime_for_job', { table_name: 'job_postings' });
+
     // Update job posting status first
     const { error: updateError } = await supabase
       .from('job_postings')
@@ -172,7 +175,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in edge function:', error);
     
-    // Use the stored requestData for updating failed status
     try {
       if (requestData?.jobPostingId) {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;

@@ -28,7 +28,7 @@ export const useRealtimeUpdates = ({
   const cleanupSubscription = useCallback(() => {
     if (channelRef.current) {
       console.log('Cleaning up subscription');
-      channelRef.current.unsubscribe(); // Proper channel cleanup
+      channelRef.current.unsubscribe();
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
       isSubscribed.current = false;
@@ -37,50 +37,34 @@ export const useRealtimeUpdates = ({
   }, []);
 
   const handleChannelError = useCallback(() => {
-    cleanupSubscription();
-    
     if (retryCount.current >= MAX_RETRIES) {
       console.error('Max retries reached, giving up');
       toast.error('Failed to connect to job updates. Please try again.');
       onFailed('Connection lost after max retries');
-      retryCount.current = 0; // Reset for potential future retries
+      retryCount.current = 0;
       return;
     }
 
-    const delay = Math.pow(2, retryCount.current) * 1000; // 1s, 2s, 4s, 8s, 16s
+    const delay = Math.pow(2, retryCount.current) * 1000;
     retryCount.current++;
     
     console.log(`Retrying connection in ${delay}ms (attempt ${retryCount.current}/${MAX_RETRIES})`);
     setTimeout(() => {
       setupRealtimeSubscription();
     }, delay);
-  }, [cleanupSubscription, onFailed]);
+  }, []);
 
-  const setupRealtimeSubscription = useCallback(async () => {
-    if (channelRef.current || isSubscribed.current || !currentJobId) {
-      console.log('Subscription already exists or no job ID');
+  const setupRealtimeSubscription = useCallback(() => {
+    if (!currentJobId || channelRef.current) {
+      console.log('Subscription exists or no job ID');
       return;
     }
 
-    console.log('Setting up new real-time subscription');
-    isSubscribed.current = true;
-
+    console.log('Setting up new real-time subscription for job:', currentJobId);
+    
     try {
-      // First verify the job exists
-      const { data, error } = await supabase
-        .from('job_postings')
-        .select('id')
-        .eq('id', currentJobId)
-        .single();
-
-      if (error || !data) {
-        console.error('Job not found:', error);
-        onFailed('Job not found');
-        return;
-      }
-
       channelRef.current = supabase
-        .channel('job-updates')
+        .channel(`job-updates-${currentJobId}`)
         .on(
           'postgres_changes',
           {
@@ -89,8 +73,10 @@ export const useRealtimeUpdates = ({
             table: 'job_postings',
             filter: `id=eq.${currentJobId}`
           },
-          debounce(async (payload) => {
+          debounce((payload) => {
+            console.log('Received update payload:', payload);
             const now = Date.now();
+            
             if (now - lastUpdateTime.current < THROTTLE_DELAY) {
               console.log('Throttling update, too soon since last update');
               return;
@@ -111,71 +97,61 @@ export const useRealtimeUpdates = ({
 
             isProcessingUpdate.current = true;
             lastUpdateTime.current = now;
+            lastProcessedState.current = newState;
             
             try {
               console.log('Processing job update:', posting);
-              lastProcessedState.current = newState;
 
               if (posting.status === 'processed') {
-                await onProcessed(posting.id, posting.processed_at || '');
+                onProcessed(posting.id, posting.processed_at || '');
                 toast.success('Job processing completed');
-                retryCount.current = 0; // Reset retry count on success
+                retryCount.current = 0;
               } else if (posting.status === 'failed') {
                 onFailed(posting.description);
                 toast.error(`Job processing failed: ${posting.description || 'Unknown error'}`);
-                retryCount.current = 0; // Reset retry count on explicit failure
+                retryCount.current = 0;
               }
             } catch (error) {
               console.error('Error processing update:', error);
-              
-              if (error instanceof Error && error.message.includes('channel closed')) {
-                handleChannelError();
-              } else {
-                toast.error('Error processing job update');
-                onFailed('Error processing update');
-              }
+              onFailed('Error processing update');
             } finally {
               isProcessingUpdate.current = false;
             }
-          }, 1000)
+          }, 500)
         )
         .subscribe((status) => {
           console.log('Subscription status:', status);
+          
           if (status === 'SUBSCRIBED') {
             console.log('Successfully subscribed to job updates');
-            retryCount.current = 0; // Reset retry count on successful subscription
+            isSubscribed.current = true;
+            retryCount.current = 0;
           } else if (status === 'CHANNEL_ERROR') {
             console.error('Channel error occurred');
-            handleChannelError();
-          } else if (status === 'CLOSED') {
-            console.error('Channel closed');
+            cleanupSubscription();
             handleChannelError();
           }
         });
 
-      return () => {
-        cleanupSubscription();
-      };
     } catch (error) {
       console.error('Error setting up subscription:', error);
       onFailed('Error setting up subscription');
-      isSubscribed.current = false;
+      cleanupSubscription();
     }
   }, [currentJobId, onProcessed, onFailed, handleChannelError, cleanupSubscription]);
 
   useEffect(() => {
-    if (!currentJobId) return;
+    if (!currentJobId) {
+      cleanupSubscription();
+      return;
+    }
     
-    let cleanup: (() => void) | undefined;
-    setupRealtimeSubscription().then(result => {
-      cleanup = result;
-    });
-
+    setupRealtimeSubscription();
+    
     return () => {
-      if (cleanup) cleanup();
-      isProcessingUpdate.current = false;
+      cleanupSubscription();
     };
-  }, [currentJobId, setupRealtimeSubscription]);
+  }, [currentJobId, setupRealtimeSubscription, cleanupSubscription]);
 
   return {
     cleanup: cleanupSubscription
