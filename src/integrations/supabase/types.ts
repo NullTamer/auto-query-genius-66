@@ -11,18 +11,21 @@ export type Database = {
     Tables: {
       extracted_keywords: {
         Row: {
+          created_at: string | null
           id: number
           is_public: boolean | null
           keyword: string | null
           user_id: string | null
         }
         Insert: {
+          created_at?: string | null
           id?: never
           is_public?: boolean | null
           keyword?: string | null
           user_id?: string | null
         }
         Update: {
+          created_at?: string | null
           id?: never
           is_public?: boolean | null
           keyword?: string | null
