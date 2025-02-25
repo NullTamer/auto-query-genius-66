@@ -23,7 +23,7 @@ export const useRealtimeUpdates = ({
   const lastUpdateTime = useRef<number>(0);
   const retryCount = useRef(0);
   const MAX_RETRIES = 5;
-  const THROTTLE_DELAY = 1000; // 1 second minimum between updates
+  const THROTTLE_DELAY = 1000;
 
   const cleanupSubscription = useCallback(() => {
     if (channelRef.current) {
@@ -73,7 +73,7 @@ export const useRealtimeUpdates = ({
             table: 'job_postings',
             filter: `id=eq.${currentJobId}`
           },
-          debounce((payload) => {
+          debounce(async (payload) => {
             console.log('Received update payload:', payload);
             const now = Date.now();
             
@@ -103,6 +103,8 @@ export const useRealtimeUpdates = ({
               console.log('Processing job update:', posting);
 
               if (posting.status === 'processed') {
+                // Add a small delay to ensure DB has time to write keywords
+                await new Promise(resolve => setTimeout(resolve, 500));
                 onProcessed(posting.id, posting.processed_at || '');
                 toast.success('Job processing completed');
                 retryCount.current = 0;

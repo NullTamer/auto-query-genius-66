@@ -34,6 +34,13 @@ export const useKeywords = () => {
         fetchInProgress.current = true;
         console.log('Fetching keywords for job ID:', jobId);
         
+        const session = await supabase.auth.getSession();
+        if (!session.data.session) {
+          console.error('No active session');
+          toast.error('Please log in to view keywords');
+          return;
+        }
+
         const { data: keywordsData, error } = await supabase
           .from('extracted_keywords')
           .select('*')
@@ -54,8 +61,7 @@ export const useKeywords = () => {
             frequency: k.frequency || 1
           }));
           
-          console.log('Formatted keywords:', formattedKeywords);
-          
+          console.log('Setting formatted keywords:', formattedKeywords);
           setKeywords(formattedKeywords);
           setUpdateCount(prev => prev + 1);
         }
