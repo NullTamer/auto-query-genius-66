@@ -1,5 +1,6 @@
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0';
 
 export class JobRepository {
   private supabase: SupabaseClient;
