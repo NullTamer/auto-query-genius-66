@@ -15,6 +15,7 @@ export type Database = {
           frequency: number | null
           id: number
           is_public: boolean | null
+          job_posting_id: number | null
           keyword: string | null
           user_id: string | null
         }
@@ -23,6 +24,7 @@ export type Database = {
           frequency?: number | null
           id?: never
           is_public?: boolean | null
+          job_posting_id?: number | null
           keyword?: string | null
           user_id?: string | null
         }
@@ -31,10 +33,19 @@ export type Database = {
           frequency?: number | null
           id?: never
           is_public?: boolean | null
+          job_posting_id?: number | null
           keyword?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "extracted_keywords_job_posting_id_fkey"
+            columns: ["job_posting_id"]
+            isOneToOne: false
+            referencedRelation: "job_postings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_descriptions: {
         Row: {
