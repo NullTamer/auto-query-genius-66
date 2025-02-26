@@ -17,7 +17,7 @@ export const useKeywords = () => {
   const fetchInProgress = useRef(false);
   const channelRef = useRef<any>(null);
   const retryCount = useRef(0);
-  const maxRetries = 10; // Maximum number of retries
+  const maxRetries = 10;
 
   const setupRealtimeSubscription = useCallback((jobId: string) => {
     if (channelRef.current) {
@@ -26,26 +26,27 @@ export const useKeywords = () => {
       supabase.removeChannel(channelRef.current);
     }
 
-    console.log('Setting up realtime subscription for job ID:', jobId);
+    const numericJobId = parseInt(jobId, 10);
+    console.log('Setting up realtime subscription for job ID:', numericJobId);
+    
     channelRef.current = supabase
-      .channel(`keywords-${jobId}`)
+      .channel(`keywords-${numericJobId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'extracted_keywords',
-          filter: `job_posting_id=eq.${jobId}`
+          filter: `job_posting_id=eq.${numericJobId}`
         },
         (payload) => {
           console.log('Received keywords update:', payload);
-          fetchKeywords(jobId); // Call directly instead of debounced version
+          fetchKeywords(jobId);
         }
       )
       .subscribe((status) => {
         console.log('Subscription status:', status);
         if (status === 'SUBSCRIBED') {
-          // Initial fetch when subscription is established
           fetchKeywords(jobId);
         }
       });
@@ -59,12 +60,13 @@ export const useKeywords = () => {
 
     try {
       fetchInProgress.current = true;
-      console.log('Fetching keywords for job ID:', jobId);
+      const numericJobId = parseInt(jobId, 10);
+      console.log('Fetching keywords for job ID:', numericJobId);
       
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
         .select('keyword, category, frequency')
-        .eq('job_posting_id', jobId)
+        .eq('job_posting_id', numericJobId)
         .order('frequency', { ascending: false });
 
       if (error) {
@@ -75,7 +77,7 @@ export const useKeywords = () => {
       console.log('Raw keywords data:', keywordsData);
 
       if (keywordsData && keywordsData.length > 0) {
-        retryCount.current = 0; // Reset retry count on success
+        retryCount.current = 0;
         const formattedKeywords = keywordsData.map(k => ({
           keyword: k.keyword,
           category: k.category || undefined,
