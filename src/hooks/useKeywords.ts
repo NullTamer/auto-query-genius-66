@@ -59,6 +59,12 @@ export const useKeywords = () => {
     }
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.log('No authenticated session found');
+        return;
+      }
+
       fetchInProgress.current = true;
       const numericJobId = parseInt(jobId, 10);
       console.log('Fetching keywords for job ID:', numericJobId);
