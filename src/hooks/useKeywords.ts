@@ -16,6 +16,8 @@ export const useKeywords = () => {
   const lastFetchedJobId = useRef<string | null>(null);
   const fetchInProgress = useRef(false);
   const channelRef = useRef<any>(null);
+  const retryCount = useRef(0);
+  const maxRetries = 10; // Maximum number of retries
 
   const setupRealtimeSubscription = useCallback((jobId: string) => {
     if (channelRef.current) {
@@ -42,6 +44,10 @@ export const useKeywords = () => {
       )
       .subscribe((status) => {
         console.log('Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          // Initial fetch when subscription is established
+          fetchKeywords(jobId);
+        }
       });
   }, []);
 
@@ -57,7 +63,7 @@ export const useKeywords = () => {
       
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
-        .select('keyword, category, frequency, job_posting_id')
+        .select('keyword, category, frequency')
         .eq('job_posting_id', jobId)
         .order('frequency', { ascending: false });
 
@@ -69,6 +75,7 @@ export const useKeywords = () => {
       console.log('Raw keywords data:', keywordsData);
 
       if (keywordsData && keywordsData.length > 0) {
+        retryCount.current = 0; // Reset retry count on success
         const formattedKeywords = keywordsData.map(k => ({
           keyword: k.keyword,
           category: k.category || undefined,
@@ -79,9 +86,13 @@ export const useKeywords = () => {
         setKeywords(formattedKeywords);
         setUpdateCount(prev => prev + 1);
         lastFetchedJobId.current = jobId;
-      } else {
-        console.log('No keywords found, retrying in 2 seconds...');
+      } else if (retryCount.current < maxRetries) {
+        retryCount.current++;
+        console.log(`No keywords found, retry attempt ${retryCount.current} of ${maxRetries}`);
         setTimeout(() => fetchKeywords(jobId), 2000);
+      } else {
+        console.log('Max retries reached, stopping fetch attempts');
+        retryCount.current = 0;
       }
     } catch (error) {
       console.error('Error fetching keywords:', error);
@@ -90,13 +101,6 @@ export const useKeywords = () => {
       fetchInProgress.current = false;
     }
   };
-
-  const debouncedFetchKeywords = useCallback(
-    debounce((jobId: string) => {
-      fetchKeywords(jobId);
-    }, 500),
-    []
-  );
 
   const handleRemoveKeyword = useCallback((keywordToRemove: string) => {
     setKeywords(prev => prev.filter(k => k.keyword !== keywordToRemove));
@@ -107,6 +111,7 @@ export const useKeywords = () => {
     setUpdateCount(0);
     lastFetchedJobId.current = null;
     fetchInProgress.current = false;
+    retryCount.current = 0;
     
     if (channelRef.current) {
       channelRef.current.unsubscribe();
@@ -129,7 +134,7 @@ export const useKeywords = () => {
     updateCount,
     debouncedFetchKeywords: useCallback((jobId: string) => {
       setupRealtimeSubscription(jobId);
-      fetchKeywords(jobId); // Call directly instead of debounced
+      fetchKeywords(jobId);
     }, [setupRealtimeSubscription]),
     handleRemoveKeyword,
     resetKeywords
