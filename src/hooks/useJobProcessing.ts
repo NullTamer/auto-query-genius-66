@@ -7,7 +7,7 @@ export const useJobProcessing = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null);
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [currentJobId, setCurrentJobId] = useState<number | null>(null);
   const processingRef = useRef(false);
 
   const processJob = useCallback(async (jobDescription: string) => {
@@ -46,11 +46,12 @@ export const useJobProcessing = () => {
         throw new Error(data.error || 'Failed to process job posting');
       }
       
-      setCurrentJobId(data.jobId.toString());
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+      setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
       toast.success('Job processing completed');
-      console.log('Processing completed for job ID:', data.jobId);
-      return data.jobId.toString();
+      console.log('Processing completed for job ID:', jobId);
+      return jobId;
 
     } catch (error) {
       console.error('Error processing job:', error);

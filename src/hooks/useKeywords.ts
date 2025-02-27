@@ -13,31 +13,30 @@ export interface Keyword {
 export const useKeywords = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [updateCount, setUpdateCount] = useState(0);
-  const lastFetchedJobId = useRef<string | null>(null);
+  const lastFetchedJobId = useRef<number | null>(null);
   const fetchInProgress = useRef(false);
   const channelRef = useRef<any>(null);
   const retryCount = useRef(0);
   const maxRetries = 10;
 
-  const setupRealtimeSubscription = useCallback((jobId: string) => {
+  const setupRealtimeSubscription = useCallback((jobId: number) => {
     if (channelRef.current) {
       console.log('Cleaning up existing subscription');
       channelRef.current.unsubscribe();
       supabase.removeChannel(channelRef.current);
     }
 
-    const numericJobId = parseInt(jobId, 10);
-    console.log('Setting up realtime subscription for job ID:', numericJobId);
+    console.log('Setting up realtime subscription for job ID:', jobId);
     
     channelRef.current = supabase
-      .channel(`keywords-${numericJobId}`)
+      .channel(`keywords-${jobId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'extracted_keywords',
-          filter: `job_posting_id=eq.${numericJobId}`
+          filter: `job_posting_id=eq.${jobId}`
         },
         (payload) => {
           console.log('Received keywords update:', payload);
@@ -52,7 +51,7 @@ export const useKeywords = () => {
       });
   }, []);
 
-  const fetchKeywords = async (jobId: string) => {
+  const fetchKeywords = async (jobId: number) => {
     if (fetchInProgress.current) {
       console.log('Fetch already in progress, skipping');
       return;
@@ -60,14 +59,13 @@ export const useKeywords = () => {
 
     try {
       fetchInProgress.current = true;
-      const numericJobId = parseInt(jobId, 10);
-      console.log('Fetching keywords for job ID:', numericJobId);
+      console.log('Fetching keywords for job ID:', jobId);
       
       // Only select columns that exist in the database
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
         .select('keyword, frequency')
-        .eq('job_posting_id', numericJobId)
+        .eq('job_posting_id', jobId)
         .order('frequency', { ascending: false });
 
       if (error) {
@@ -131,13 +129,15 @@ export const useKeywords = () => {
     };
   }, []);
 
+  const debouncedFetchKeywords = useCallback((jobId: number) => {
+    setupRealtimeSubscription(jobId);
+    fetchKeywords(jobId);
+  }, [setupRealtimeSubscription]);
+
   return {
     keywords,
     updateCount,
-    debouncedFetchKeywords: useCallback((jobId: string) => {
-      setupRealtimeSubscription(jobId);
-      fetchKeywords(jobId);
-    }, [setupRealtimeSubscription]),
+    debouncedFetchKeywords,
     handleRemoveKeyword,
     resetKeywords
   };

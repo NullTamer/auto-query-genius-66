@@ -56,7 +56,7 @@ const Index = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleProcessed = useCallback(async (jobId: string, processedAt: string) => {
+  const handleProcessed = useCallback(async (jobId: number, processedAt: string) => {
     try {
       console.log('Job processed, fetching keywords for ID:', jobId);
       await debouncedFetchKeywords(jobId);
