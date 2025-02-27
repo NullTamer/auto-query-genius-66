@@ -44,11 +44,13 @@ const Index = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      console.log('Auth session initialized:', session ? 'logged in' : 'not logged in');
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('Auth state changed:', _event);
       setSession(session);
     });
 
@@ -85,20 +87,17 @@ const Index = () => {
   });
 
   const handleGenerateQuery = useCallback(async () => {
-    if (!session) {
-      toast.error('Please sign in to process jobs');
-      navigate('/auth');
-      return;
-    }
-
+    console.log('Generate query button clicked');
+    // Removed authentication requirement
     resetKeywords();
     setBooleanQuery("");
     const jobId = await processJob(jobDescription);
+    console.log('Job ID after processing:', jobId);
     if (jobId) {
       setIsProcessing(true);
       setHasError(false);
     }
-  }, [jobDescription, processJob, resetKeywords, setIsProcessing, setHasError, session, navigate]);
+  }, [jobDescription, processJob, resetKeywords, setIsProcessing, setHasError]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
@@ -106,6 +105,7 @@ const Index = () => {
     setHasError(false);
     
     try {
+      console.log('Refreshing data for job ID:', currentJobId);
       await debouncedFetchKeywords(currentJobId);
       toast.success('Data refreshed successfully');
     } catch (error) {
@@ -131,6 +131,7 @@ const Index = () => {
 
   // Update boolean query whenever keywords change
   useEffect(() => {
+    console.log('Keywords updated, generating boolean query:', keywords);
     setBooleanQuery(generateBooleanQuery(keywords));
   }, [keywords]);
 
