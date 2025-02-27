@@ -138,13 +138,13 @@ export const useKeywords = () => {
     }
   }, []);
 
-  // Creating a debounced version of fetchKeywords
+  // Creating a debounced version of fetchKeywords using the previously defined fetchKeywords function
   const debouncedFetchKeywords = useCallback(
     debounce((jobId: number) => {
       setupRealtimeSubscription(jobId);
       fetchKeywords(jobId);
     }, 300),
-    [setupRealtimeSubscription]
+    [setupRealtimeSubscription, fetchKeywords]
   );
 
   return {

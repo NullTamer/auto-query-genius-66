@@ -29,7 +29,7 @@ const Index = () => {
     lastScrapeTime,
     setLastScrapeTime,
     currentJobId,
-    setCurrentJobId,
+    setCurrentJobId, // Make sure this is properly destructured
     processJob
   } = useJobProcessing();
 
