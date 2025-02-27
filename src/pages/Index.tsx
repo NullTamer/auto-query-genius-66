@@ -1,22 +1,20 @@
-
 import { useState, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import JobDescriptionInput from "@/components/JobDescriptionInput";
-import KeywordDisplay from "@/components/KeywordDisplay";
-import QueryPreview from "@/components/QueryPreview";
-import CounterModule from "@/components/CounterModule";
-import { Terminal, RefreshCw, LogIn } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
 import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
 import { generateBooleanQuery } from "@/utils/queryUtils";
-import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+// Components
+import AuthButton from "@/components/auth/AuthButton";
+import PageHeader from "@/components/layout/PageHeader";
+import JobInputSection from "@/components/job/JobInputSection";
+import KeywordDisplay from "@/components/KeywordDisplay";
+import QueryPreview from "@/components/QueryPreview";
+import CounterModule from "@/components/CounterModule";
 
 const Index = () => {
-  const navigate = useNavigate();
   const [jobDescription, setJobDescription] = useState("");
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -88,7 +86,6 @@ const Index = () => {
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
-    // Removed authentication requirement
     resetKeywords();
     setBooleanQuery("");
     const jobId = await processJob(jobDescription);
@@ -117,18 +114,6 @@ const Index = () => {
     }
   }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
 
-  const handleSignOut = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      toast.success('Signed out successfully');
-      navigate('/auth');
-    } catch (error) {
-      toast.error('Failed to sign out');
-      console.error('Error signing out:', error);
-    }
-  };
-
   // Update boolean query whenever keywords change
   useEffect(() => {
     console.log('Keywords updated, generating boolean query:', keywords);
@@ -138,86 +123,20 @@ const Index = () => {
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
       <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
-        <div className="flex justify-end p-4">
-          {!session ? (
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/auth')}
-              className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
-            >
-              <LogIn className="h-4 w-4" />
-              Sign In
-            </Button>
-          ) : (
-            <Button 
-              variant="outline" 
-              onClick={handleSignOut}
-              className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
-            >
-              Sign Out
-            </Button>
-          )}
-        </div>
-
-        <div className="text-center mb-8 md:mb-12 animate-fade-in relative">
-          <div className="absolute right-0 top-0">
-            {updateCount > 0 && (
-              <Badge 
-                variant="outline"
-                className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium cyber-card neon-glow data-stream"
-                title={`Updates: ${updateCount}`}
-              >
-                {updateCount}
-              </Badge>
-            )}
-          </div>
-          <h1 className="text-3xl md:text-4xl font-bold text-primary mb-4 neon-glow glitch">
-            AutoSearchPro
-          </h1>
-          <p className="text-muted-foreground">
-            <Terminal className="inline mr-2 h-4 w-4" />
-            Transform job descriptions into powerful Boolean search queries
-          </p>
-          {lastScrapeTime && (
-            <p className="text-sm text-primary/70 mt-2 data-stream">
-              Last updated: {new Date(lastScrapeTime).toLocaleString()}
-            </p>
-          )}
-        </div>
+        <AuthButton session={session} />
+        <PageHeader updateCount={updateCount} lastScrapeTime={lastScrapeTime} />
 
         <div className="grid gap-6 md:gap-8 md:grid-cols-2">
-          <div className="space-y-4">
-            <JobDescriptionInput
-              value={jobDescription}
-              onChange={setJobDescription}
-              onSubmit={handleGenerateQuery}
-              isProcessing={isProcessing}
-            />
-            <div className="flex items-center justify-center gap-4">
-              {isProcessing && !hasError && (
-                <div className="flex items-center gap-2 text-primary matrix-loader p-2">
-                  <span className="glitch">Processing job data...</span>
-                </div>
-              )}
-              {currentJobId && (
-                <Button
-                  variant="outline"
-                  onClick={handleRefresh}
-                  disabled={isRefreshing}
-                  className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-              )}
-            </div>
-            {hasError && (
-              <div className="text-center text-destructive cyber-card p-4">
-                <p className="glitch">Failed to process job posting</p>
-                <p className="text-sm mt-2">Try using the refresh button or submitting again</p>
-              </div>
-            )}
-          </div>
+          <JobInputSection 
+            jobDescription={jobDescription}
+            setJobDescription={setJobDescription}
+            isProcessing={isProcessing}
+            hasError={hasError}
+            currentJobId={currentJobId}
+            handleGenerateQuery={handleGenerateQuery}
+            handleRefresh={handleRefresh}
+            isRefreshing={isRefreshing}
+          />
           <KeywordDisplay
             keywords={keywords}
             onRemoveKeyword={handleRemoveKeyword}
