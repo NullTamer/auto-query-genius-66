@@ -14,6 +14,7 @@ import JobInputSection from "@/components/job/JobInputSection";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
 import CounterModule from "@/components/CounterModule";
+import StatisticsModule from "@/components/StatisticsModule";
 
 const Index = () => {
   const [jobDescription, setJobDescription] = useState("");
@@ -91,6 +92,7 @@ const Index = () => {
     console.log('Generate query button clicked');
     resetKeywords();
     setBooleanQuery("");
+    setIsProcessing(true); // Ensure we set processing state immediately
     
     try {
       // Directly process job and handle the response
@@ -121,11 +123,13 @@ const Index = () => {
       
       // Use the keywords directly from the edge function response
       if (data.keywords && data.keywords.length > 0) {
+        console.log('Using keywords directly from edge function:', data.keywords);
         setKeywordsFromEdgeFunction(data.keywords);
         setIsProcessing(false);
         toast.success('Job processing completed');
       } else {
         // If no keywords in response, try to fetch them from the database
+        console.log('No keywords in response, fetching from database...');
         await debouncedFetchKeywords(jobId);
         setIsProcessing(false);
         toast.success('Job processing completed');
@@ -181,10 +185,13 @@ const Index = () => {
             handleRefresh={handleRefresh}
             isRefreshing={isRefreshing}
           />
-          <KeywordDisplay
-            keywords={keywords}
-            onRemoveKeyword={handleRemoveKeyword}
-          />
+          <div className="space-y-6">
+            <KeywordDisplay
+              keywords={keywords}
+              onRemoveKeyword={handleRemoveKeyword}
+            />
+            <StatisticsModule keywords={keywords} />
+          </div>
         </div>
 
         <QueryPreview query={booleanQuery} />

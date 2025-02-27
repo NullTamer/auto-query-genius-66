@@ -142,6 +142,8 @@ serve(async (req) => {
       return await extractKeywordsWithGemini(jobDescription, apiKey)
     })
     
+    console.log(`Extracted ${keywords.length} keywords:`, keywords)
+    
     // Create database client for Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -151,7 +153,7 @@ serve(async (req) => {
     let finalJobId = jobPostingId
     
     // If no job posting ID was provided, create a new job posting
-    if (!jobPostingId) {
+    if (!finalJobId) {
       // Get or create a default job source
       const { data: sources, error: sourcesError } = await supabase
         .from('job_sources')
@@ -267,22 +269,6 @@ function createSupabaseClient(supabaseUrl: string, serviceRoleKey: string) {
     from: (table: string) => ({
       select: (columns = '*') => ({
         limit: (limit: number) => ({
-          async single() {
-            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${limit}`, {
-              headers: {
-                'Authorization': `Bearer ${serviceRoleKey}`,
-                'apikey': serviceRoleKey,
-                'Content-Type': 'application/json'
-              }
-            })
-            
-            if (!response.ok) {
-              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
-            }
-            
-            const data = await response.json()
-            return { data: data.length ? data[0] : null, error: null }
-          },
           async execute() {
             const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${limit}`, {
               headers: {
@@ -298,6 +284,22 @@ function createSupabaseClient(supabaseUrl: string, serviceRoleKey: string) {
             
             const data = await response.json()
             return { data, error: null }
+          },
+          async single() {
+            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${limit}`, {
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'apikey': serviceRoleKey,
+                'Content-Type': 'application/json'
+              }
+            })
+            
+            if (!response.ok) {
+              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
+            }
+            
+            const data = await response.json()
+            return { data: data.length ? data[0] : null, error: null }
           }
         }),
         eq: (column: string, value: any) => ({
