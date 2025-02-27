@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
+import CounterModule from "@/components/CounterModule";
 import { Terminal, RefreshCw, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -223,6 +224,11 @@ const Index = () => {
         </div>
 
         <QueryPreview query={booleanQuery} />
+        
+        {/* Test Counter Module */}
+        <div className="my-8">
+          <CounterModule className="max-w-md mx-auto" />
+        </div>
       </div>
     </div>
   );
