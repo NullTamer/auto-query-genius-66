@@ -82,7 +82,6 @@ export const useKeywords = () => {
         const formattedKeywords = keywordsData.map(k => ({
           keyword: k.keyword,
           frequency: k.frequency || 1
-          // No category field since it doesn't exist in the database
         }));
         
         console.log('Setting formatted keywords:', formattedKeywords);

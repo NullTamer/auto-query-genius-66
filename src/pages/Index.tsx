@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -88,11 +89,19 @@ const Index = () => {
     console.log('Generate query button clicked');
     resetKeywords();
     setBooleanQuery("");
-    const jobId = await processJob(jobDescription);
-    console.log('Job ID after processing:', jobId);
-    if (jobId) {
-      setIsProcessing(true);
-      setHasError(false);
+    
+    try {
+      const jobId = await processJob(jobDescription);
+      console.log('Job ID after processing:', jobId);
+      if (jobId) {
+        setIsProcessing(true);
+        setHasError(false);
+      }
+    } catch (error) {
+      console.error('Error in handleGenerateQuery:', error);
+      setIsProcessing(false);
+      setHasError(true);
+      toast.error('Failed to process job description');
     }
   }, [jobDescription, processJob, resetKeywords, setIsProcessing, setHasError]);
 
