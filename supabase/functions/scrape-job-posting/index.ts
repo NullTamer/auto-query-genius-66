@@ -90,13 +90,15 @@ async function extractKeywordsWithGemini(text: string, apiKey: string): Promise<
   }
   
   const data = await response.json()
-  console.log("Gemini response:", JSON.stringify(data, null, 2).substring(0, 500) + "...")
+  console.log("Gemini response:", JSON.stringify(data).substring(0, 500) + "...")
   
   try {
     const textResponse = data.candidates[0].content.parts[0].text
     // Clean up any markdown code formatting that might be in the response
     const cleanJson = textResponse.replace(/```json|```/g, '').trim()
-    return JSON.parse(cleanJson)
+    const keywords = JSON.parse(cleanJson)
+    console.log(`Extracted ${keywords.length} keywords:`, keywords.slice(0, 5))
+    return keywords
   } catch (e) {
     console.error("Failed to parse Gemini response:", e)
     console.log("Raw response:", JSON.stringify(data))
@@ -119,7 +121,7 @@ serve(async (req) => {
     if (!jobDescription) {
       return new Response(
         JSON.stringify({ error: 'Job description is required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
     
@@ -131,7 +133,7 @@ serve(async (req) => {
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: 'Gemini API key not configured' }),
-        { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
     
@@ -139,8 +141,6 @@ serve(async (req) => {
     const keywords = await retryWithBackoff(async () => {
       return await extractKeywordsWithGemini(jobDescription, apiKey)
     })
-    
-    console.log(`Extracted ${keywords.length} keywords:`, keywords.slice(0, 5))
     
     // Create database client for Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -241,7 +241,7 @@ serve(async (req) => {
       }),
       { 
         status: 200, 
-        headers: { 'Content-Type': 'application/json', ...corsHeaders } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )
     
@@ -255,7 +255,7 @@ serve(async (req) => {
       }),
       { 
         status: 500, 
-        headers: { 'Content-Type': 'application/json', ...corsHeaders } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )
   }

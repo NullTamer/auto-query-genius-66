@@ -9,7 +9,7 @@ interface JobInputSectionProps {
   setJobDescription: (value: string) => void;
   isProcessing: boolean;
   hasError: boolean;
-  currentJobId: string | null;
+  currentJobId: number | null;
   handleGenerateQuery: () => void;
   handleRefresh: () => void;
   isRefreshing: boolean;

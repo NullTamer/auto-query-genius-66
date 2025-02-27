@@ -129,16 +129,21 @@ export const useKeywords = () => {
     };
   }, []);
 
-  const debouncedFetchKeywords = useCallback((jobId: number) => {
-    setupRealtimeSubscription(jobId);
-    fetchKeywords(jobId);
-  }, [setupRealtimeSubscription]);
+  // Update our useKeywords hook to also handle direct keyword data from the edge function response
+  const setKeywordsFromEdgeFunction = useCallback((edgeFunctionKeywords: Array<{keyword: string, frequency: number}>) => {
+    if (edgeFunctionKeywords && edgeFunctionKeywords.length > 0) {
+      console.log('Setting keywords directly from edge function response:', edgeFunctionKeywords);
+      setKeywords(edgeFunctionKeywords);
+      setUpdateCount(prev => prev + 1);
+    }
+  }, []);
 
   return {
     keywords,
     updateCount,
     debouncedFetchKeywords,
     handleRemoveKeyword,
-    resetKeywords
+    resetKeywords,
+    setKeywordsFromEdgeFunction
   };
 };
