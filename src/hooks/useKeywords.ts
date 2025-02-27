@@ -63,9 +63,10 @@ export const useKeywords = () => {
       const numericJobId = parseInt(jobId, 10);
       console.log('Fetching keywords for job ID:', numericJobId);
       
+      // Only select columns that exist in the database
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
-        .select('keyword, category, frequency')
+        .select('keyword, frequency')
         .eq('job_posting_id', numericJobId)
         .order('frequency', { ascending: false });
 
@@ -80,8 +81,8 @@ export const useKeywords = () => {
         retryCount.current = 0;
         const formattedKeywords = keywordsData.map(k => ({
           keyword: k.keyword,
-          category: k.category || undefined,
           frequency: k.frequency || 1
+          // No category field since it doesn't exist in the database
         }));
         
         console.log('Setting formatted keywords:', formattedKeywords);

@@ -43,6 +43,7 @@ const KeywordDisplay: React.FC<KeywordDisplayProps> = ({
                 {keywordObj.category && (
                   <span className="text-xs opacity-50">({keywordObj.category})</span>
                 )}
+                <span className="text-xs opacity-50">({keywordObj.frequency})</span>
                 <X
                   size={14}
                   className="cursor-pointer opacity-50 group-hover:opacity-100 transition-opacity"
