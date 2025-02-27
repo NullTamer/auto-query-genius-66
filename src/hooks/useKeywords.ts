@@ -138,6 +138,15 @@ export const useKeywords = () => {
     }
   }, []);
 
+  // Creating a debounced version of fetchKeywords
+  const debouncedFetchKeywords = useCallback(
+    debounce((jobId: number) => {
+      setupRealtimeSubscription(jobId);
+      fetchKeywords(jobId);
+    }, 300),
+    [setupRealtimeSubscription]
+  );
+
   return {
     keywords,
     updateCount,

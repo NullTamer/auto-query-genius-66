@@ -29,6 +29,7 @@ const Index = () => {
     lastScrapeTime,
     setLastScrapeTime,
     currentJobId,
+    setCurrentJobId,
     processJob
   } = useJobProcessing();
 
@@ -115,6 +116,7 @@ const Index = () => {
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
+      // Convert the date to string format
       setLastScrapeTime(new Date().toISOString());
       
       // Use the keywords directly from the edge function response
