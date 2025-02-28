@@ -6,10 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Terminal, Upload } from "lucide-react";
 import mammoth from "mammoth";
 import { toast } from "sonner";
-import * as pdfjs from 'pdfjs-dist';
+// Import pdfjs properly
+import * as pdfjsLib from 'pdfjs-dist';
 
 // Initialize PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 interface JobDescriptionInputProps {
   value: string;
@@ -44,7 +45,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         
         try {
           // Load the PDF document
-          const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
           const pdf = await loadingTask.promise;
           
           let fullText = '';
