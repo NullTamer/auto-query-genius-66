@@ -41,20 +41,43 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
       } else if (fileExtension === 'pdf') {
         // Process PDF file using PDF.js
         const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
         
-        let textContent = '';
-        
-        // Extract text from all pages
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => item.str);
-          textContent += strings.join(' ') + '\n';
+        try {
+          // Load the PDF document
+          const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+          const pdf = await loadingTask.promise;
+          
+          let fullText = '';
+          
+          // Get total number of pages
+          console.log(`PDF loaded with ${pdf.numPages} pages`);
+          
+          // Extract text from each page
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            
+            // Extract text from text items
+            const pageText = textContent.items
+              .filter((item: any) => 'str' in item)
+              .map((item: any) => item.str)
+              .join(' ');
+              
+            fullText += pageText + '\n';
+          }
+          
+          console.log("Extracted PDF text:", fullText.substring(0, 100) + "...");
+          
+          if (fullText.trim() === '') {
+            throw new Error('No text content extracted from PDF');
+          }
+          
+          onChange(fullText);
+          toast.success("PDF file processed successfully");
+        } catch (pdfError) {
+          console.error("PDF processing error:", pdfError);
+          toast.error("Error processing PDF: " + (pdfError instanceof Error ? pdfError.message : "Unknown error"));
         }
-        
-        onChange(textContent);
-        toast.success("PDF file processed successfully");
       } else if (fileExtension === 'txt' || fileExtension === 'doc') {
         // Process text files using FileReader
         const reader = new FileReader();
