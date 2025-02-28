@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -27,11 +26,6 @@ export const useKeywords = () => {
     }
 
     console.log('Setting up realtime subscription for job ID:', jobId);
-    
-    // Enable realtime for the table
-    supabase.realtime.setConfig({
-      eventsPerSecond: 10,
-    });
     
     channelRef.current = supabase
       .channel(`keywords-${jobId}`)
@@ -66,7 +60,6 @@ export const useKeywords = () => {
       fetchInProgress.current = true;
       console.log('Fetching keywords for job ID:', jobId);
       
-      // Only select columns that exist in the database
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
         .select('keyword, frequency')
@@ -137,7 +130,6 @@ export const useKeywords = () => {
     };
   }, []);
 
-  // Add function to handle direct keyword data from edge function
   const setKeywordsFromEdgeFunction = useCallback((edgeFunctionKeywords: Array<{keyword: string, frequency: number}>) => {
     if (edgeFunctionKeywords && edgeFunctionKeywords.length > 0) {
       console.log('Setting keywords directly from edge function response:', edgeFunctionKeywords);
@@ -148,7 +140,6 @@ export const useKeywords = () => {
     }
   }, []);
 
-  // Creating a debounced version of fetchKeywords
   const debouncedFetchKeywords = useCallback(
     debounce((jobId: number) => {
       setupRealtimeSubscription(jobId);
