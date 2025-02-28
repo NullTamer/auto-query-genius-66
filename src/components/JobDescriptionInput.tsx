@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Terminal, Upload } from "lucide-react";
+import mammoth from "mammoth";
+import { toast } from "sonner";
 
 interface JobDescriptionInputProps {
   value: string;
@@ -18,15 +20,137 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   onSubmit,
   isProcessing = false
 }) => {
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        onChange(text);
-      };
-      reader.readAsText(file);
+    if (!file) return;
+
+    try {
+      // Check file extension
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (fileExtension === 'docx') {
+        // Process .docx file using mammoth
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        onChange(result.value);
+        toast.success("DOCX file processed successfully");
+      } else if (fileExtension === 'pdf') {
+        // For PDF files, use a fallback method with FileReader
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            // Use an older version of PDF.js to match the worker version
+            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+            
+            // Set the worker source to match the version (3.11.174)
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 
+              'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            
+            const arrayBuffer = e.target?.result as ArrayBuffer;
+            if (!arrayBuffer) {
+              console.error("PDF arrayBuffer is undefined");
+              toast.error("Failed to read PDF file");
+              return;
+            }
+            
+            console.log("PDF arrayBuffer size:", arrayBuffer.byteLength);
+            
+            try {
+              // Load the PDF document
+              const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+              console.log("PDF loading task created");
+              
+              const pdf = await loadingTask.promise;
+              console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
+              
+              let fullText = '';
+              
+              // Extract text from each page
+              for (let i = 1; i <= pdf.numPages; i++) {
+                console.log(`Processing page ${i}/${pdf.numPages}`);
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                
+                // Extract text from text items
+                const pageText = textContent.items
+                  .filter((item: any) => 'str' in item)
+                  .map((item: any) => item.str)
+                  .join(' ');
+                  
+                fullText += pageText + '\n';
+              }
+              
+              console.log(`Extracted ${fullText.length} characters of text from PDF`);
+              
+              if (fullText.trim() === '') {
+                // If no text was extracted, try an alternative approach or show a message
+                toast.warning("No text could be extracted from this PDF. It may be scanned or image-based.");
+                // Optionally, you could try OCR here or suggest the user to manually copy-paste
+              } else {
+                onChange(fullText);
+                toast.success("PDF file processed successfully");
+              }
+            } catch (pdfError) {
+              console.error("PDF.js processing error:", pdfError);
+              
+              // Simple fallback for plain text extraction
+              try {
+                const textReader = new FileReader();
+                textReader.onload = (textEvent) => {
+                  const text = textEvent.target?.result as string;
+                  if (text && text.trim() !== '') {
+                    onChange(text);
+                    toast.success("PDF text extracted using fallback method");
+                  } else {
+                    toast.error("Could not extract text from PDF");
+                  }
+                };
+                textReader.readAsText(file);
+              } catch (textError) {
+                console.error("Fallback text extraction failed:", textError);
+                toast.error("Could not process PDF file");
+              }
+            }
+          } catch (importError) {
+            console.error("Failed to load PDF.js:", importError);
+            
+            // If PDF.js import fails, try to read as text anyway
+            try {
+              const textReader = new FileReader();
+              textReader.onload = (textEvent) => {
+                const text = textEvent.target?.result as string;
+                onChange(text);
+                toast.warning("Using simple text extraction for PDF");
+              };
+              textReader.readAsText(file);
+            } catch (textError) {
+              console.error("Text extraction failed:", textError);
+              toast.error("Failed to process PDF file");
+            }
+          }
+        };
+        
+        reader.onerror = () => {
+          toast.error("Error reading the PDF file");
+        };
+        
+        // Start reading the file as an ArrayBuffer
+        reader.readAsArrayBuffer(file);
+      } else if (fileExtension === 'txt' || fileExtension === 'doc') {
+        // Process text files using FileReader
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const text = e.target?.result as string;
+          onChange(text);
+          toast.success("File processed successfully");
+        };
+        reader.readAsText(file);
+      } else {
+        toast.error("Unsupported file format. Please upload .txt, .doc, .docx, or .pdf files.");
+      }
+    } catch (error) {
+      console.error("Error processing file:", error);
+      toast.error("Error processing file. Please try again.");
     }
   };
 
@@ -51,7 +175,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx"
+              accept=".txt,.doc,.docx,.pdf"
               className="hidden"
               onChange={handleFileUpload}
             />
