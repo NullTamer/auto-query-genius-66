@@ -14,7 +14,11 @@ const QueryPreviewSection: React.FC<QueryPreviewSectionProps> = ({ keywords }) =
   // Update boolean query whenever keywords change
   useEffect(() => {
     console.log('Keywords updated, generating boolean query:', keywords);
-    setBooleanQuery(generateBooleanQuery(keywords));
+    if (keywords && keywords.length > 0) {
+      setBooleanQuery(generateBooleanQuery(keywords));
+    } else {
+      setBooleanQuery("");
+    }
   }, [keywords]);
 
   return <QueryPreview query={booleanQuery} />;
