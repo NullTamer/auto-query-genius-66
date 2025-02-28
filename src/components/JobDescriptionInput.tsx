@@ -6,14 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Terminal, Upload } from "lucide-react";
 import mammoth from "mammoth";
 import { toast } from "sonner";
-// Import pdfjs properly
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Set up PDF.js worker properly with a simple string path
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.js',
-  import.meta.url,
-).toString();
 
 interface JobDescriptionInputProps {
   value: string;
@@ -43,48 +35,76 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         onChange(result.value);
         toast.success("DOCX file processed successfully");
       } else if (fileExtension === 'pdf') {
-        // Process PDF file using PDF.js
-        const arrayBuffer = await file.arrayBuffer();
-        
-        try {
-          console.log("Starting to process PDF file");
-          
-          // Load the PDF document
-          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-          console.log("PDF loading task created");
-          
-          const pdf = await loadingTask.promise;
-          console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
-          
-          let fullText = '';
-          
-          // Extract text from each page
-          for (let i = 1; i <= pdf.numPages; i++) {
-            console.log(`Processing page ${i}/${pdf.numPages}`);
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
+        // For PDF files, use a fallback method with FileReader
+        // This is a simpler approach that might work where PDF.js fails
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            // Try to load PDF.js dynamically only when needed
+            const pdfjsLib = await import('pdfjs-dist');
             
-            // Extract text from text items
-            const pageText = textContent.items
-              .filter((item: any) => 'str' in item)
-              .map((item: any) => item.str)
-              .join(' ');
+            // Set the worker source
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 
+              'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            
+            const arrayBuffer = e.target?.result as ArrayBuffer;
+            console.log("PDF arrayBuffer size:", arrayBuffer.byteLength);
+            
+            // Load the PDF document
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            console.log("PDF loading task created");
+            
+            try {
+              const pdf = await loadingTask.promise;
+              console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
               
-            fullText += pageText + '\n';
+              let fullText = '';
+              
+              // Extract text from each page
+              for (let i = 1; i <= pdf.numPages; i++) {
+                console.log(`Processing page ${i}/${pdf.numPages}`);
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                
+                // Extract text from text items
+                const pageText = textContent.items
+                  .filter((item: any) => 'str' in item)
+                  .map((item: any) => item.str)
+                  .join(' ');
+                  
+                fullText += pageText + '\n';
+              }
+              
+              console.log(`Extracted ${fullText.length} characters of text from PDF`);
+              
+              if (fullText.trim() === '') {
+                // If no text was extracted, try an alternative approach or show a message
+                toast.warning("No text could be extracted from this PDF. It may be scanned or image-based.");
+                // Optionally, you could try OCR here or suggest the user to manually copy-paste
+              } else {
+                onChange(fullText);
+                toast.success("PDF file processed successfully");
+              }
+            } catch (pdfError) {
+              console.error("PDF.js processing error:", pdfError);
+              // Fallback to plain text extraction if PDF.js fails
+              reader.readAsText(file);
+              toast.warning("Using fallback method for PDF processing");
+            }
+          } catch (importError) {
+            console.error("Failed to load PDF.js:", importError);
+            // If PDF.js import fails, try to read as text anyway
+            reader.readAsText(file);
+            toast.warning("Using simple text extraction for PDF");
           }
-          
-          console.log(`Extracted ${fullText.length} characters of text from PDF`);
-          
-          if (fullText.trim() === '') {
-            throw new Error('No text content extracted from PDF');
-          }
-          
-          onChange(fullText);
-          toast.success("PDF file processed successfully");
-        } catch (pdfError) {
-          console.error("PDF processing error:", pdfError);
-          toast.error("Error processing PDF: " + (pdfError instanceof Error ? pdfError.message : "Unknown error"));
-        }
+        };
+        
+        reader.onerror = () => {
+          toast.error("Error reading the PDF file");
+        };
+        
+        // Start reading the file as an ArrayBuffer
+        reader.readAsArrayBuffer(file);
       } else if (fileExtension === 'txt' || fileExtension === 'doc') {
         // Process text files using FileReader
         const reader = new FileReader();
