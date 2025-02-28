@@ -9,8 +9,19 @@ import { toast } from "sonner";
 // Import pdfjs properly
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Initialize PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set up PDF.js worker properly with a dynamic import
+const setupPdfWorker = async () => {
+  try {
+    // This ensures we use the built-in worker from the bundle
+    const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker.default;
+  } catch (err) {
+    console.error("Failed to load PDF worker:", err);
+  }
+};
+
+// Call the setup function immediately
+setupPdfWorker();
 
 interface JobDescriptionInputProps {
   value: string;
@@ -44,17 +55,20 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         const arrayBuffer = await file.arrayBuffer();
         
         try {
+          console.log("Starting to process PDF file");
+          
           // Load the PDF document
           const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+          console.log("PDF loading task created");
+          
           const pdf = await loadingTask.promise;
+          console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
           
           let fullText = '';
           
-          // Get total number of pages
-          console.log(`PDF loaded with ${pdf.numPages} pages`);
-          
           // Extract text from each page
           for (let i = 1; i <= pdf.numPages; i++) {
+            console.log(`Processing page ${i}/${pdf.numPages}`);
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
             
@@ -67,7 +81,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
             fullText += pageText + '\n';
           }
           
-          console.log("Extracted PDF text:", fullText.substring(0, 100) + "...");
+          console.log(`Extracted ${fullText.length} characters of text from PDF`);
           
           if (fullText.trim() === '') {
             throw new Error('No text content extracted from PDF');
