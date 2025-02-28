@@ -44,14 +44,23 @@ export const useJobProcessingManager = (jobDescription: string) => {
         
         // If keywords were returned directly, set them
         if (data.keywords && Array.isArray(data.keywords) && data.keywords.length > 0) {
+          console.log('Setting keywords directly from edge function response:', data.keywords);
           setKeywordsFromEdgeFunction(data.keywords);
           setIsProcessing(false);
+          toast.success('Job processed successfully');
         } else {
           // Otherwise fetch them from the database
+          console.log('No keywords in direct response, fetching from database...');
           debouncedFetchKeywords(data.id);
+          toast.success('Job processed successfully');
+          
+          // We'll keep isProcessing true until keywords are fetched in useKeywords
+          setTimeout(() => {
+            if (isProcessing) {
+              setIsProcessing(false);
+            }
+          }, 10000); // Set a maximum wait time of 10 seconds
         }
-        
-        toast.success('Job processed successfully');
       } else {
         setHasError(true);
         setIsProcessing(false);
