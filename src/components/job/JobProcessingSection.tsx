@@ -1,5 +1,5 @@
 
-import JobInputSection from "@/components/job/JobInputSection";
+import JobInputSection from "./JobInputSection";
 
 interface JobProcessingSectionProps {
   jobDescription: string;
@@ -12,7 +12,7 @@ interface JobProcessingSectionProps {
   isRefreshing: boolean;
 }
 
-const JobProcessingSection: React.FC<JobProcessingSectionProps> = ({
+const JobProcessingSection = ({
   jobDescription,
   setJobDescription,
   isProcessing,
@@ -21,18 +21,20 @@ const JobProcessingSection: React.FC<JobProcessingSectionProps> = ({
   handleGenerateQuery,
   handleRefresh,
   isRefreshing
-}) => {
+}: JobProcessingSectionProps) => {
   return (
-    <JobInputSection
-      jobDescription={jobDescription}
-      setJobDescription={setJobDescription}
-      isProcessing={isProcessing}
-      hasError={hasError}
-      currentJobId={currentJobId}
-      handleGenerateQuery={handleGenerateQuery}
-      handleRefresh={handleRefresh}
-      isRefreshing={isRefreshing}
-    />
+    <div>
+      <JobInputSection
+        jobDescription={jobDescription}
+        setJobDescription={setJobDescription}
+        isProcessing={isProcessing}
+        hasError={hasError}
+        currentJobId={currentJobId}
+        handleGenerateQuery={handleGenerateQuery}
+        handleRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
+      />
+    </div>
   );
 };
 
