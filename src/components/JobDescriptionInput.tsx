@@ -9,19 +9,11 @@ import { toast } from "sonner";
 // Import pdfjs properly
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set up PDF.js worker properly with a dynamic import
-const setupPdfWorker = async () => {
-  try {
-    // This ensures we use the built-in worker from the bundle
-    const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker.default;
-  } catch (err) {
-    console.error("Failed to load PDF worker:", err);
-  }
-};
-
-// Call the setup function immediately
-setupPdfWorker();
+// Set up PDF.js worker properly with a simple string path
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.js',
+  import.meta.url,
+).toString();
 
 interface JobDescriptionInputProps {
   value: string;
