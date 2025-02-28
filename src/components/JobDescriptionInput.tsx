@@ -36,30 +36,25 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         toast.success("DOCX file processed successfully");
       } else if (fileExtension === 'pdf') {
         // For PDF files, use a fallback method with FileReader
+        // This is a simpler approach that might work where PDF.js fails
         const reader = new FileReader();
         reader.onload = async (e) => {
           try {
-            // Use an older version of PDF.js to match the worker version
-            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+            // Try to load PDF.js dynamically only when needed
+            const pdfjsLib = await import('pdfjs-dist');
             
-            // Set the worker source to match the version (3.11.174)
+            // Set the worker source
             pdfjsLib.GlobalWorkerOptions.workerSrc = 
               'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
             
             const arrayBuffer = e.target?.result as ArrayBuffer;
-            if (!arrayBuffer) {
-              console.error("PDF arrayBuffer is undefined");
-              toast.error("Failed to read PDF file");
-              return;
-            }
-            
             console.log("PDF arrayBuffer size:", arrayBuffer.byteLength);
             
+            // Load the PDF document
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            console.log("PDF loading task created");
+            
             try {
-              // Load the PDF document
-              const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-              console.log("PDF loading task created");
-              
               const pdf = await loadingTask.promise;
               console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
               
@@ -92,41 +87,15 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
               }
             } catch (pdfError) {
               console.error("PDF.js processing error:", pdfError);
-              
-              // Simple fallback for plain text extraction
-              try {
-                const textReader = new FileReader();
-                textReader.onload = (textEvent) => {
-                  const text = textEvent.target?.result as string;
-                  if (text && text.trim() !== '') {
-                    onChange(text);
-                    toast.success("PDF text extracted using fallback method");
-                  } else {
-                    toast.error("Could not extract text from PDF");
-                  }
-                };
-                textReader.readAsText(file);
-              } catch (textError) {
-                console.error("Fallback text extraction failed:", textError);
-                toast.error("Could not process PDF file");
-              }
+              // Fallback to plain text extraction if PDF.js fails
+              reader.readAsText(file);
+              toast.warning("Using fallback method for PDF processing");
             }
           } catch (importError) {
             console.error("Failed to load PDF.js:", importError);
-            
             // If PDF.js import fails, try to read as text anyway
-            try {
-              const textReader = new FileReader();
-              textReader.onload = (textEvent) => {
-                const text = textEvent.target?.result as string;
-                onChange(text);
-                toast.warning("Using simple text extraction for PDF");
-              };
-              textReader.readAsText(file);
-            } catch (textError) {
-              console.error("Text extraction failed:", textError);
-              toast.error("Failed to process PDF file");
-            }
+            reader.readAsText(file);
+            toast.warning("Using simple text extraction for PDF");
           }
         };
         
