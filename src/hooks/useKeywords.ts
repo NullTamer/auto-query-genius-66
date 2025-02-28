@@ -131,7 +131,7 @@ export const useKeywords = () => {
     };
   }, []);
 
-  // Update our useKeywords hook to also handle direct keyword data from the edge function response
+  // Add function to handle direct keyword data from edge function
   const setKeywordsFromEdgeFunction = useCallback((edgeFunctionKeywords: Array<{keyword: string, frequency: number}>) => {
     if (edgeFunctionKeywords && edgeFunctionKeywords.length > 0) {
       console.log('Setting keywords directly from edge function response:', edgeFunctionKeywords);
@@ -142,7 +142,7 @@ export const useKeywords = () => {
     }
   }, []);
 
-  // Creating a debounced version of fetchKeywords using the previously defined fetchKeywords function
+  // Creating a debounced version of fetchKeywords
   const debouncedFetchKeywords = useCallback(
     debounce((jobId: number) => {
       setupRealtimeSubscription(jobId);

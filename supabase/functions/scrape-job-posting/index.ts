@@ -4,6 +4,7 @@ import { processJobPosting } from "./gemini-service.ts";
 import { saveKeywords, saveJobPosting } from "./job-repository.ts";
 import { extractKeywords } from "./utils.ts";
 
+// Define CORS headers - this is critical for browser access
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useKeywords } from '@/hooks/useKeywords';
@@ -25,7 +24,7 @@ export const useJobProcessingManager = (jobDescription: string) => {
       
       console.log('Invoking edge function with job description:', jobDescription.slice(0, 100) + '...');
       
-      // Add proper headers to avoid CORS issues
+      // Invoke the edge function with proper headers for CORS
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { jobDescription },
         headers: {
@@ -61,9 +60,7 @@ export const useJobProcessingManager = (jobDescription: string) => {
           
           // Set a safety timeout to clear processing state if keywords fetch takes too long
           setTimeout(() => {
-            if (isProcessing) {
-              setIsProcessing(false);
-            }
+            setIsProcessing(false);
           }, 10000); // Set a maximum wait time of 10 seconds
         }
       } else {
