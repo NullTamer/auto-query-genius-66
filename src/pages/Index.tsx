@@ -1,6 +1,5 @@
 
 import { useState, useEffect } from "react";
-import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
 import { supabase } from "@/integrations/supabase/client";
 import AuthButton from "@/components/auth/AuthButton";
@@ -9,6 +8,7 @@ import JobProcessingSection from "@/components/job/JobProcessingSection";
 import KeywordResultsSection from "@/components/job/KeywordResultsSection";
 import QueryPreviewSection from "@/components/job/QueryPreviewSection";
 import CounterModule from "@/components/CounterModule";
+import { useJobProcessingManager } from "@/hooks/useJobProcessingManager";
 
 const Index = () => {
   const [jobDescription, setJobDescription] = useState("");

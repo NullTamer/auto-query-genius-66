@@ -2,7 +2,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
-import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -49,12 +48,6 @@ export const useJobProcessingManager = (jobDescription: string) => {
       toast.error(`Processing failed: ${description}`);
     }
   }, [setHasError, setIsProcessing, resetKeywords]);
-
-  useRealtimeUpdates({
-    currentJobId,
-    onProcessed: handleProcessed,
-    onFailed: handleFailed
-  });
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
@@ -139,3 +132,5 @@ export const useJobProcessingManager = (jobDescription: string) => {
     isRefreshing
   };
 };
+
+export default useJobProcessingManager;
