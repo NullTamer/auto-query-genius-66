@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useKeywords } from '@/hooks/useKeywords';
@@ -49,30 +50,37 @@ export const useJobProcessingManager = (jobDescription: string) => {
         // If keywords were returned directly, set them
         if (data.keywords && Array.isArray(data.keywords) && data.keywords.length > 0) {
           console.log('Setting keywords directly from edge function response:', data.keywords);
-          setKeywordsFromEdgeFunction(data.keywords);
+          
+          // Transform data if needed to match the expected format
+          const formattedKeywords = data.keywords.map(k => ({
+            keyword: k.keyword || k,
+            frequency: k.frequency || 1
+          }));
+          
+          setKeywordsFromEdgeFunction(formattedKeywords);
           setIsProcessing(false);
           toast.success('Job processed successfully');
         } else {
           // Otherwise fetch them from the database
           console.log('No keywords in direct response, fetching from database...');
           debouncedFetchKeywords(data.id);
-          toast.success('Job processed successfully');
           
           // Set a safety timeout to clear processing state if keywords fetch takes too long
           setTimeout(() => {
             setIsProcessing(false);
-          }, 10000); // Set a maximum wait time of 10 seconds
+            toast.success('Job processed, fetching keywords...');
+          }, 5000); // Set a maximum wait time of 5 seconds
         }
       } else {
         setHasError(true);
         setIsProcessing(false);
         toast.error('No job data returned');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing job:', error);
       setHasError(true);
       setIsProcessing(false);
-      toast.error('An error occurred while processing the job');
+      toast.error('An error occurred while processing the job: ' + (error.message || 'Unknown error'));
     }
   }, [jobDescription, isProcessing, debouncedFetchKeywords, resetKeywords, setKeywordsFromEdgeFunction]);
 

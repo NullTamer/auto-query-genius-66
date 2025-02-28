@@ -28,6 +28,11 @@ export const useKeywords = () => {
 
     console.log('Setting up realtime subscription for job ID:', jobId);
     
+    // Enable realtime for the table
+    supabase.realtime.setConfig({
+      eventsPerSecond: 10,
+    });
+    
     channelRef.current = supabase
       .channel(`keywords-${jobId}`)
       .on(
@@ -95,6 +100,7 @@ export const useKeywords = () => {
       } else {
         console.log('Max retries reached, stopping fetch attempts');
         retryCount.current = 0;
+        toast.error('No keywords found after multiple attempts');
       }
     } catch (error) {
       console.error('Error fetching keywords:', error);
