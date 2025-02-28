@@ -70,7 +70,9 @@ export const useKeywords = () => {
 
       if (error) {
         console.error('Error fetching keywords:', error);
-        throw error;
+        toast.error('Failed to fetch keywords: ' + error.message);
+        fetchInProgress.current = false;
+        return;
       }
 
       console.log('Raw keywords data:', keywordsData);
@@ -135,6 +137,8 @@ export const useKeywords = () => {
       console.log('Setting keywords directly from edge function response:', edgeFunctionKeywords);
       setKeywords(edgeFunctionKeywords);
       setUpdateCount(prev => prev + 1);
+    } else {
+      console.log('No keywords received from edge function');
     }
   }, []);
 

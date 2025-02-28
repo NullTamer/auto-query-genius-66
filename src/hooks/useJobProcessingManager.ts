@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useKeywords } from '@/hooks/useKeywords';
@@ -24,14 +25,18 @@ export const useJobProcessingManager = (jobDescription: string) => {
       
       console.log('Invoking edge function with job description:', jobDescription.slice(0, 100) + '...');
       
+      // Add proper headers to avoid CORS issues
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { jobDescription },
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
       if (error) {
         console.error('Error invoking edge function:', error);
         setHasError(true);
-        toast.error('Failed to process job description');
+        toast.error('Failed to process job description: ' + error.message);
         setIsProcessing(false);
         return;
       }
@@ -54,7 +59,7 @@ export const useJobProcessingManager = (jobDescription: string) => {
           debouncedFetchKeywords(data.id);
           toast.success('Job processed successfully');
           
-          // We'll keep isProcessing true until keywords are fetched in useKeywords
+          // Set a safety timeout to clear processing state if keywords fetch takes too long
           setTimeout(() => {
             if (isProcessing) {
               setIsProcessing(false);
