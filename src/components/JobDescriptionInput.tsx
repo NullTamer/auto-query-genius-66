@@ -6,10 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Terminal, Upload } from "lucide-react";
 import mammoth from "mammoth";
 import { toast } from "sonner";
-import * as pdfjs from 'pdfjs-dist';
-
-// Initialize PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 interface JobDescriptionInputProps {
   value: string;
@@ -38,23 +34,6 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         const result = await mammoth.extractRawText({ arrayBuffer });
         onChange(result.value);
         toast.success("DOCX file processed successfully");
-      } else if (fileExtension === 'pdf') {
-        // Process PDF file using PDF.js
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-        
-        let textContent = '';
-        
-        // Extract text from all pages
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => item.str);
-          textContent += strings.join(' ') + '\n';
-        }
-        
-        onChange(textContent);
-        toast.success("PDF file processed successfully");
       } else if (fileExtension === 'txt' || fileExtension === 'doc') {
         // Process text files using FileReader
         const reader = new FileReader();
@@ -65,7 +44,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         };
         reader.readAsText(file);
       } else {
-        toast.error("Unsupported file format. Please upload .txt, .doc, .docx, or .pdf files.");
+        toast.error("Unsupported file format. Please upload .txt, .doc, or .docx files.");
       }
     } catch (error) {
       console.error("Error processing file:", error);
@@ -94,7 +73,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx,.pdf"
+              accept=".txt,.doc,.docx"
               className="hidden"
               onChange={handleFileUpload}
             />
