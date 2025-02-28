@@ -4,8 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Terminal, Upload } from "lucide-react";
-import mammoth from "mammoth";
-import { toast } from "sonner";
 
 interface JobDescriptionInputProps {
   value: string;
@@ -20,35 +18,15 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   onSubmit,
   isProcessing = false
 }) => {
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      // Check file extension
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
-      if (fileExtension === 'docx') {
-        // Process .docx file using mammoth
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        onChange(result.value);
-        toast.success("DOCX file processed successfully");
-      } else if (fileExtension === 'txt' || fileExtension === 'doc') {
-        // Process text files using FileReader
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const text = e.target?.result as string;
-          onChange(text);
-          toast.success("File processed successfully");
-        };
-        reader.readAsText(file);
-      } else {
-        toast.error("Unsupported file format. Please upload .txt, .doc, or .docx files.");
-      }
-    } catch (error) {
-      console.error("Error processing file:", error);
-      toast.error("Error processing file. Please try again.");
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        onChange(text);
+      };
+      reader.readAsText(file);
     }
   };
 
