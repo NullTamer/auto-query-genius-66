@@ -14,7 +14,7 @@ type Keyword = {
 };
 
 // Simple function to extract keywords from job description
-async function extractKeywords(text: string): Promise<Keyword[]> {
+function extractKeywords(text: string): Keyword[] {
   // Simple implementation that extracts words that appear frequently
   const processedText = text.toLowerCase();
   
@@ -48,7 +48,7 @@ async function extractKeywords(text: string): Promise<Keyword[]> {
 }
 
 // Simple function to save job posting and return an ID
-async function saveJobPosting(description: string): Promise<number> {
+function saveJobPosting(description: string): number {
   // In a real implementation, this would save to a database
   // For now, just return a fake ID
   return Math.floor(Math.random() * 10000);
@@ -71,13 +71,14 @@ serve(async (req) => {
     }
 
     console.log(`Processing job posting: ${jobDescription.slice(0, 100)}...`);
+    console.log(`Job description length: ${jobDescription.length}`);
 
-    // Save job posting to database
-    const jobId = await saveJobPosting(jobDescription);
+    // Save job posting to database (in this simplified version, it just returns a fake ID)
+    const jobId = saveJobPosting(jobDescription);
     
     // Extract keywords using simple function
-    const extractedKeywords = await extractKeywords(jobDescription);
-    console.log(`Extracted ${extractedKeywords.length} keywords: ${JSON.stringify(extractedKeywords, null, 2)}`);
+    const extractedKeywords = extractKeywords(jobDescription);
+    console.log(`Extracted ${extractedKeywords.length} keywords`);
     
     // Return both the job ID and the extracted keywords
     return new Response(
@@ -90,7 +91,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Error processing job posting:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error.message || "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
