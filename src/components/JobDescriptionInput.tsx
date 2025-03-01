@@ -1,12 +1,11 @@
 
-import React, { useState } from "react";
+import React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Terminal, Upload, Loader2 } from "lucide-react";
+import { Terminal, Upload } from "lucide-react";
 import mammoth from "mammoth";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 
 interface JobDescriptionInputProps {
   value: string;
@@ -21,14 +20,11 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   onSubmit,
   isProcessing = false
 }) => {
-  const [isUploading, setIsUploading] = useState(false);
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
-      setIsUploading(true);
       // Check file extension
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       
@@ -38,38 +34,6 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         const result = await mammoth.extractRawText({ arrayBuffer });
         onChange(result.value);
         toast.success("DOCX file processed successfully");
-      } else if (fileExtension === 'pdf') {
-        // For PDF files, we need to use the edge function
-        try {
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          // Show toast for longer processing time
-          toast.info("Processing PDF file, this may take a moment...");
-          
-          // Call our Supabase edge function
-          const { data, error } = await supabase.functions.invoke('extract-pdf-text', {
-            body: formData, 
-            // Make sure to set the correct content type for form data
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-          });
-          
-          if (error) {
-            throw new Error(`Failed to extract text from PDF: ${error.message}`);
-          }
-          
-          if (data?.text) {
-            onChange(data.text);
-            toast.success("PDF file processed successfully");
-          } else {
-            throw new Error('No text extracted from PDF');
-          }
-        } catch (pdfError) {
-          console.error("Error processing PDF:", pdfError);
-          toast.error("Unable to extract text from PDF. Please try a different file format or copy the text manually.");
-        }
       } else if (fileExtension === 'txt' || fileExtension === 'doc') {
         // Process text files using FileReader
         const reader = new FileReader();
@@ -80,13 +44,11 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         };
         reader.readAsText(file);
       } else {
-        toast.error("Unsupported file format. Please upload .txt, .doc, .docx, or .pdf files.");
+        toast.error("Unsupported file format. Please upload .txt, .doc, or .docx files.");
       }
     } catch (error) {
       console.error("Error processing file:", error);
       toast.error("Error processing file. Please try again.");
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -104,22 +66,16 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
               size="sm"
               className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
               onClick={() => document.getElementById("file-upload")?.click()}
-              disabled={isUploading}
             >
-              {isUploading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Upload size={16} />
-              )}
-              {isUploading ? "Uploading..." : "Upload"}
+              <Upload size={16} />
+              Upload
             </Button>
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx,.pdf"
+              accept=".txt,.doc,.docx"
               className="hidden"
               onChange={handleFileUpload}
-              disabled={isUploading}
             />
           </div>
         </div>
@@ -128,21 +84,13 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
           onChange={(e) => onChange(e.target.value)}
           placeholder="Paste your job description here..."
           className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all"
-          disabled={isUploading}
         />
         <Button
           onClick={onSubmit}
           className="w-full cyber-card bg-primary/20 hover:bg-primary/30 text-primary hover:text-primary-foreground hover:neon-glow transition-all"
-          disabled={!value.trim() || isProcessing || isUploading}
+          disabled={!value.trim() || isProcessing}
         >
-          {isUploading ? (
-            <>
-              <Loader2 size={16} className="animate-spin mr-2" />
-              Processing Upload...
-            </>
-          ) : (
-            "Generate Boolean Query"
-          )}
+          Generate Boolean Query
         </Button>
       </div>
     </Card>
