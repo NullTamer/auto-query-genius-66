@@ -29,6 +29,7 @@ const JobInputSection = ({
   handleFileUpload
 }: JobInputSectionProps) => {
   const [fileName, setFileName] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,14 +41,24 @@ const JobInputSection = ({
       return;
     }
 
+    // Check file size (limit to 10MB for better compatibility)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("PDF file is too large (max 10MB). Please use a smaller file.");
+      return;
+    }
+
     setFileName(file.name);
+    setIsUploading(true);
     
     if (handleFileUpload) {
       try {
         await handleFileUpload(file);
+        toast.success(`Successfully uploaded and processed ${file.name}`);
       } catch (error) {
         console.error("Error uploading PDF:", error);
-        toast.error("Failed to process PDF file");
+        toast.error("Failed to process PDF file. Please try again or use a different file.");
+      } finally {
+        setIsUploading(false);
       }
     }
   };
@@ -62,7 +73,7 @@ const JobInputSection = ({
         value={jobDescription}
         onChange={setJobDescription}
         onSubmit={handleGenerateQuery}
-        isProcessing={isProcessing}
+        isProcessing={isProcessing || isUploading}
       />
       
       <div className="flex items-center justify-between gap-4">
@@ -70,11 +81,11 @@ const JobInputSection = ({
           <Button
             variant="outline"
             onClick={triggerFileInput}
-            disabled={isProcessing}
+            disabled={isProcessing || isUploading}
             className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
           >
-            <Upload className="h-4 w-4" />
-            Upload PDF
+            <Upload className={`h-4 w-4 ${isUploading ? 'animate-spin' : ''}`} />
+            {isUploading ? 'Uploading...' : 'Upload PDF'}
           </Button>
           <input
             type="file"
@@ -96,7 +107,7 @@ const JobInputSection = ({
           <Button
             variant="outline"
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || isUploading}
             className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -105,16 +116,16 @@ const JobInputSection = ({
         )}
       </div>
       
-      {isProcessing && !hasError && (
+      {(isProcessing || isUploading) && !hasError && (
         <div className="flex items-center justify-center gap-2 text-primary matrix-loader p-2">
-          <span className="glitch">Processing job data...</span>
+          <span className="glitch">{isUploading ? 'Processing PDF...' : 'Processing job data...'}</span>
         </div>
       )}
       
       {hasError && (
         <div className="text-center text-destructive cyber-card p-4">
           <p className="glitch">Failed to process job posting</p>
-          <p className="text-sm mt-2">Try using the refresh button or submitting again</p>
+          <p className="text-sm mt-2">Try using the refresh button, a different PDF, or submitting again</p>
         </div>
       )}
     </div>
