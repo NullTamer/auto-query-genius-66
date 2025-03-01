@@ -78,7 +78,7 @@ const JobInputSection = ({
         setIsUploading(false);
         // Reset progress after a short delay
         setTimeout(() => {
-          if (setUploadProgress(prev => prev === 100 ? 0 : prev));
+          setUploadProgress(0);
         }, 2000);
       }
     }
