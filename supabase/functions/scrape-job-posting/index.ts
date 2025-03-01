@@ -1,445 +1,394 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
-import { corsHeaders, handleCors } from '../_shared/cors.ts';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { corsHeaders } from "../_shared/cors.ts";
 
-// Environment variables
-const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const geminiApiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
-const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+// Define a helper for returning error responses
+const errorResponse = (message: string, status = 400, details?: any) => {
+  console.error(`Error: ${message}`, details);
+  return new Response(
+    JSON.stringify({ 
+      success: false, 
+      error: message,
+      details: details
+    }),
+    { 
+      status, 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    }
+  );
+};
 
-// Create Supabase client
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Create a Supabase client with the admin key
+const supabaseAdmin = createClient(
+  Deno.env.get("SUPABASE_URL") ?? "",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+);
 
-// Constants for rate limiting and retries
-const THROTTLE_DELAY_MS = 2000; // 2 seconds between API calls
-const MAX_RETRIES = 3;
-
-/**
- * Simple text extraction from PDF using Gemini API
- * We avoid using pdfjs-dist which was causing stack overflow issues
- */
-async function extractTextFromPdf(pdfBytes: Uint8Array): Promise<string> {
+async function extractKeywordsWithGemini(text: string) {
   try {
-    // Check if we're dealing with a very large PDF
-    if (pdfBytes.length > 10 * 1024 * 1024) { // > 10MB
-      console.warn(`PDF is very large (${pdfBytes.length} bytes), this might exceed Gemini's limits`);
-      // Return some placeholder text to avoid API errors
-      return "The PDF file is too large to process. Please try with a smaller file or extract the text manually.";
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not set");
     }
-    
-    // Convert binary PDF to base64
-    // Process in chunks to avoid stack overflow
-    let base64Pdf = '';
-    const chunkSize = 1024 * 1024; // 1MB chunks
-    
-    for (let i = 0; i < pdfBytes.length; i += chunkSize) {
-      const chunk = pdfBytes.slice(i, Math.min(i + chunkSize, pdfBytes.length));
-      base64Pdf += btoa(String.fromCharCode.apply(null, Array.from(chunk)));
-    }
-    
-    console.log(`PDF encoded as base64 (${base64Pdf.length} chars)`);
-    
-    // Use Gemini to extract text
-    const response = await fetch(`${geminiUrl}?key=${geminiApiKey}`, {
-      method: 'POST',
+
+    const prompt = `
+      You are an expert job posting analyzer. I'll provide a job description, and I need you to:
+      1. Extract all relevant technical skills, tools, frameworks, and technologies mentioned
+      2. Include soft skills if explicitly mentioned
+      3. Format the response ONLY as JSON array with each object having:
+         - keyword: the skill or keyword
+         - frequency: number of occurrences or importance (1 if just mentioned once)
+      
+      Do not include any explanation or text outside the JSON array. 
+      Only extract actually mentioned keywords, don't infer or add keywords not explicitly in the text.
+      Return at most 30 keywords, prioritizing the most important ones.
+      
+      Here's the job description:
+      ${text.slice(0, 15000)}
+      ${text.length > 15000 ? "[text truncated due to length]" : ""}
+    `;
+
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
       },
       body: JSON.stringify({
         contents: [
           {
             parts: [
-              { 
-                text: "Extract all text content from this PDF. Return only the extracted text without any explanations or formatting." 
-              },
               {
-                inlineData: {
-                  mimeType: "application/pdf",
-                  data: base64Pdf
-                }
-              }
+                text: prompt,
+              },
             ],
-          }
+          },
         ],
         generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 4096,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Gemini API error (${response.status}):`, errorText);
-      throw new Error(`Gemini API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    
-    console.log(`Successfully extracted ${extractedText.length} characters from PDF`);
-    return extractedText;
-  } catch (error) {
-    console.error('Error extracting text from PDF:', error);
-    throw new Error(`Failed to extract text from PDF: ${error.message}`);
-  }
-}
-
-/**
- * Extract keywords from text using Gemini API
- */
-async function extractKeywordsWithGemini(text: string, retryCount = 0): Promise<string[]> {
-  try {
-    // Truncate very long texts to avoid API limits
-    const truncatedText = text.length > 30000 ? text.substring(0, 30000) + "..." : text;
-    
-    console.log(`Extracting keywords from text (${truncatedText.length} chars)`);
-    
-    const response = await fetch(`${geminiUrl}?key=${geminiApiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: `
-You are a skilled talent recruiter and HR professional. Extract all relevant TECHNICAL skills, technologies, frameworks, 
-and qualifications from the job description below. Focus ONLY on technical skills, programming languages, tools, etc.
-
-For each keyword you identify, just return the keyword itself.
-Format your response as a JSON ARRAY of strings, with each keyword as a separate element.
-
-Example output:
-["JavaScript", "React", "Node.js", "AWS", "CI/CD", "Docker"]
-
-Here's the job description:
-${truncatedText}` }
-            ],
-          }
-        ],
-        generationConfig: {
-          temperature: 0,
+          temperature: 0.2,
           maxOutputTokens: 1024,
         },
       }),
     });
 
     if (!response.ok) {
-      if ((response.status === 429 || response.status === 404) && retryCount < MAX_RETRIES) {
-        console.log(`Rate limited (${response.status}), retrying after delay... (${retryCount + 1}/${MAX_RETRIES})`);
-        await new Promise(resolve => setTimeout(resolve, THROTTLE_DELAY_MS));
-        return extractKeywordsWithGemini(text, retryCount + 1);
-      }
-      
-      const errorText = await response.text();
-      console.error(`Gemini API error (${response.status}):`, errorText);
-      throw new Error(`Gemini API error: ${response.status}`);
+      const errorData = await response.text();
+      console.error("Gemini API error:", errorData);
+      throw new Error(`Gemini API returned ${response.status}: ${errorData}`);
     }
 
     const data = await response.json();
-    let keywords: string[] = [];
     
-    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!data.candidates || data.candidates.length === 0) {
+      throw new Error("No response from Gemini API");
+    }
+
+    const candidateText = data.candidates[0].content.parts[0].text;
     
-    try {
-      // First try to parse directly as JSON
-      if (responseText.trim().startsWith('[') && responseText.trim().endsWith(']')) {
-        keywords = JSON.parse(responseText);
-      } else {
-        // If not direct JSON, look for JSON array in the text
-        const jsonMatch = responseText.match(/\[[\s\S]*?\]/);
-        if (jsonMatch) {
-          keywords = JSON.parse(jsonMatch[0]);
-        } else {
-          // Fallback to simple line splitting
-          keywords = responseText
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0 && !line.startsWith('["') && !line.endsWith('"]'));
-        }
-      }
-    } catch (parseError) {
-      console.error('Error parsing keywords:', parseError);
-      console.log('Raw response:', responseText);
-      
-      // Final fallback: just split by commas or newlines
-      keywords = responseText
-        .replace(/["\[\]]/g, '')
-        .split(/,|\n/)
-        .map(k => k.trim())
-        .filter(k => k && k.length > 0);
+    // Extract JSON array from the response
+    let jsonStr = candidateText;
+    if (jsonStr.includes('[') && jsonStr.includes(']')) {
+      jsonStr = jsonStr.substring(
+        jsonStr.indexOf('['),
+        jsonStr.lastIndexOf(']') + 1
+      );
     }
     
-    // Filter out any non-string elements and deduplicate
-    keywords = [...new Set(keywords.filter(k => typeof k === 'string' && k.trim().length > 0))];
-    
-    console.log(`Extracted ${keywords.length} keywords`);
-    return keywords;
+    return JSON.parse(jsonStr);
   } catch (error) {
-    console.error('Error extracting keywords:', error);
-    if (retryCount < MAX_RETRIES) {
-      console.log(`Retrying keyword extraction... (${retryCount + 1}/${MAX_RETRIES})`);
-      await new Promise(resolve => setTimeout(resolve, THROTTLE_DELAY_MS));
-      return extractKeywordsWithGemini(text, retryCount + 1);
-    }
-    throw new Error(`Failed to extract keywords: ${error.message}`);
+    console.error("Error in extractKeywordsWithGemini:", error);
+    throw error;
   }
 }
 
-/**
- * Save keywords to the database
- */
-async function saveKeywordsToDB(jobId: number, keywords: string[], userId?: string): Promise<void> {
-  console.log(`Saving ${keywords.length} keywords for job ID ${jobId}`);
+// Directly extract text from PDF using Gemini's document understanding
+async function extractTextFromPDFWithGemini(fileContent: Uint8Array) {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  if (!GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+
+  // Convert PDF to base64 without loading the entire file into memory at once
+  const base64Chunks: string[] = [];
+  const chunkSize = 1024 * 512; // 512KB chunks to avoid memory issues
   
+  for (let i = 0; i < fileContent.length; i += chunkSize) {
+    const chunk = fileContent.slice(i, i + chunkSize);
+    base64Chunks.push(btoa(String.fromCharCode(...chunk)));
+  }
+  
+  const base64Data = base64Chunks.join('');
+  console.log(`Converted PDF to base64 (${base64Data.length} characters)`);
+
   try {
-    // First, update the job status to processed
-    const { error: updateError } = await supabase
-      .from('job_postings')
-      .update({
-        status: 'processed',
-        processed_at: new Date().toISOString(),
-      })
-      .eq('id', jobId);
+    const prompt = "Please extract all the text from this PDF document. Return ONLY the text content, with proper paragraph formatting preserved.";
     
-    if (updateError) {
-      console.error('Error updating job posting status:', updateError);
-      throw updateError;
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: "application/pdf",
+                  data: base64Data
+                }
+              }
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096, // Increased token limit for longer PDFs
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error("Gemini Vision API error:", errorData);
+      throw new Error(`Gemini Vision API returned ${response.status}: ${errorData}`);
     }
+
+    const data = await response.json();
     
-    // Now insert all keywords
-    const keywordRows = keywords.map(keyword => ({
-      job_posting_id: jobId,
-      keyword: keyword,
-      frequency: 1, // Default frequency
-      user_id: userId || null,
-      is_public: !userId, // Public if no user ID
-    }));
-    
-    const { error: insertError } = await supabase
-      .from('extracted_keywords')
-      .insert(keywordRows);
-    
-    if (insertError) {
-      console.error('Error inserting keywords:', insertError);
-      throw insertError;
+    if (!data.candidates || data.candidates.length === 0) {
+      throw new Error("No response from Gemini Vision API");
     }
-    
-    console.log(`Successfully saved keywords for job ID ${jobId}`);
+
+    return data.candidates[0].content.parts[0].text;
   } catch (error) {
-    console.error('Error in saveKeywordsToDB:', error);
-    throw new Error(`Failed to save keywords: ${error.message}`);
+    console.error("Error extracting text from PDF with Gemini:", error);
+    throw error;
   }
 }
 
-/**
- * Main request handler
- */
-serve(async (req: Request) => {
-  // Handle CORS
-  const corsResponse = handleCors(req);
-  if (corsResponse) return corsResponse;
-
-  // Safely handle various error scenarios
+async function processJobPosting(jobData: { jobDescription: string, userId?: string }) {
   try {
-    console.log(`Request received: ${req.method}`);
+    console.log("Processing job description");
     
-    // Handle PDF upload (multipart/form-data)
-    if (req.headers.get('content-type')?.includes('multipart/form-data')) {
-      try {
-        console.log('Processing PDF upload...');
-        const formData = await req.formData();
-        const pdfFile = formData.get('file') as File;
-        
-        if (!pdfFile) {
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: 'No PDF file found in request' 
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-          );
-        }
-        
-        console.log(`Processing PDF upload: ${pdfFile.name} (${pdfFile.size} bytes)`);
-        
-        // Get user ID if available
-        const userId = formData.get('userId') as string || null;
-        
-        // Save file to job_postings table first
-        const { data: jobData, error: jobError } = await supabase
-          .from('job_postings')
-          .insert({
-            title: `PDF Upload: ${pdfFile.name}`,
-            content: `PDF File: ${pdfFile.name}`,
-            description: `PDF uploaded at ${new Date().toISOString()}`,
-            status: 'pending',
-            user_id: userId,
-            is_public: !userId,
-          })
-          .select()
-          .single();
-        
-        if (jobError) {
-          console.error('Error saving job posting:', jobError);
-          throw new Error(`Failed to save job posting: ${jobError.message}`);
-        }
-        
-        const jobId = jobData.id;
-        
-        // Upload file to storage
-        try {
-          const fileExt = pdfFile.name.split('.').pop() || 'pdf';
-          const filePath = `${jobId}_${new Date().getTime()}.${fileExt}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from('job_pdfs')
-            .upload(filePath, pdfFile, {
-              contentType: 'application/pdf',
-              cacheControl: '3600',
-            });
-          
-          if (uploadError) {
-            console.error('Error uploading PDF to storage:', uploadError);
-          } else {
-            console.log(`PDF uploaded to storage: ${filePath}`);
-            
-            // Update job posting with file path
-            await supabase
-              .from('job_postings')
-              .update({ posting_url: filePath })
-              .eq('id', jobId);
-          }
-        } catch (storageError) {
-          console.error('Error in storage operations:', storageError);
-          // Continue processing even if storage fails
-        }
-        
-        // Extract text from PDF
-        const pdfBytes = new Uint8Array(await pdfFile.arrayBuffer());
-        const extractedText = await extractTextFromPdf(pdfBytes);
-        
-        if (!extractedText || extractedText.trim().length === 0) {
-          console.error('No text extracted from PDF');
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: 'No text could be extracted from the PDF',
-              jobId 
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-          );
-        }
-        
-        // Update job content with the extracted text
-        await supabase
-          .from('job_postings')
-          .update({ 
-            content: extractedText,
-            description: `Text extracted from ${pdfFile.name} (${extractedText.length} characters)`
-          })
-          .eq('id', jobId);
-        
-        // Extract keywords
-        const keywords = await extractKeywordsWithGemini(extractedText);
-        
-        // Save keywords to database
-        await saveKeywordsToDB(jobId, keywords, userId);
-        
-        // Return successful response with keywords
-        return new Response(
-          JSON.stringify({
-            success: true,
-            jobId,
-            keywords,
-            textLength: extractedText.length
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } catch (pdfError) {
-        console.error('Error processing PDF:', pdfError);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Error processing PDF: ${pdfError.message}` 
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        );
-      }
+    // Insert a new record in the job_postings table
+    const { data: jobRecord, error: jobInsertError } = await supabaseAdmin
+      .from("job_postings")
+      .insert([
+        {
+          content: jobData.jobDescription,
+          status: "pending",
+          user_id: jobData.userId || null,
+          is_public: jobData.userId ? false : true,
+        },
+      ])
+      .select()
+      .single();
+
+    if (jobInsertError) {
+      console.error("Error inserting job posting:", jobInsertError);
+      throw jobInsertError;
     }
-    
-    // Handle regular job description (JSON)
-    else {
-      try {
-        const { jobDescription, userId } = await req.json();
-        
-        if (!jobDescription) {
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: 'No job description provided' 
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-          );
-        }
-        
-        console.log(`Processing job description (${jobDescription.length} chars)`);
-        
-        // Save to job_postings table
-        const { data: jobData, error: jobError } = await supabase
-          .from('job_postings')
-          .insert({
-            content: jobDescription,
-            description: jobDescription.substring(0, 200) + (jobDescription.length > 200 ? '...' : ''),
-            status: 'pending',
-            user_id: userId || null,
-            is_public: !userId,
-          })
-          .select()
-          .single();
-        
-        if (jobError) {
-          console.error('Error saving job posting:', jobError);
-          throw new Error(`Failed to save job posting: ${jobError.message}`);
-        }
-        
-        const jobId = jobData.id;
-        
-        // Extract keywords
-        const keywords = await extractKeywordsWithGemini(jobDescription);
-        
-        // Save keywords to database
-        await saveKeywordsToDB(jobId, keywords, userId);
-        
-        // Return successful response with keywords
-        return new Response(
-          JSON.stringify({
-            success: true,
-            jobId,
-            keywords
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } catch (jsonError) {
-        console.error('Error processing job description:', jsonError);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Error processing job description: ${jsonError.message}` 
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        );
+
+    console.log("Job posting inserted with ID:", jobRecord.id);
+
+    try {
+      // Extract keywords using Gemini
+      const keywords = await extractKeywordsWithGemini(jobData.jobDescription);
+      console.log("Extracted keywords:", keywords);
+
+      // Update job posting status to processed
+      const { error: updateError } = await supabaseAdmin
+        .from("job_postings")
+        .update({
+          status: "processed",
+          processed_at: new Date().toISOString(),
+        })
+        .eq("id", jobRecord.id);
+
+      if (updateError) {
+        console.error("Error updating job status:", updateError);
+        throw updateError;
       }
+
+      // Insert keywords into the database
+      if (keywords && keywords.length > 0) {
+        const keywordsData = keywords.map((k: any) => ({
+          job_posting_id: jobRecord.id,
+          keyword: k.keyword,
+          frequency: k.frequency || 1,
+          user_id: jobData.userId || null,
+          is_public: jobData.userId ? false : true,
+        }));
+
+        const { error: keywordInsertError } = await supabaseAdmin
+          .from("extracted_keywords")
+          .insert(keywordsData);
+
+        if (keywordInsertError) {
+          console.error("Error inserting keywords:", keywordInsertError);
+          // Continue even if keyword insertion fails
+        }
+      }
+
+      return {
+        success: true,
+        jobId: jobRecord.id,
+        keywords: keywords,
+      };
+    } catch (processingError) {
+      console.error("Error during processing:", processingError);
+      
+      // Update job posting status to failed
+      await supabaseAdmin
+        .from("job_postings")
+        .update({
+          status: "failed",
+          description: processingError.message,
+        })
+        .eq("id", jobRecord.id);
+
+      throw processingError;
     }
   } catch (error) {
-    console.error('Unhandled error in serve function:', error);
+    console.error("Error in processJobPosting:", error);
+    throw error;
+  }
+}
+
+async function handlePDFUpload(formData: FormData) {
+  try {
+    // Get the file from the form data
+    const file = formData.get("file");
+    if (!file || !(file instanceof File)) {
+      return errorResponse("No PDF file provided");
+    }
+    
+    console.log(`Processing PDF upload: ${file.name} (${file.size} bytes)`);
+    
+    if (file.type !== "application/pdf") {
+      return errorResponse("File must be a PDF");
+    }
+    
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      return errorResponse("PDF file is too large (max 10MB)");
+    }
+
+    // Get user ID from form data (if authenticated)
+    const userId = formData.get("userId")?.toString();
+    
+    // Create a unique file path for the PDF
+    const timestamp = new Date().getTime();
+    const fileExt = file.name.split(".").pop();
+    const filePath = `${timestamp}_${Math.floor(Math.random() * 10000)}.${fileExt}`;
+    
+    // Upload the file to Supabase Storage
+    const { data: storageData, error: storageError } = await supabaseAdmin.storage
+      .from("job_pdfs")
+      .upload(filePath, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+    
+    if (storageError) {
+      console.error("Error uploading PDF to storage:", storageError);
+      return errorResponse("Failed to upload PDF", 500, storageError);
+    }
+    
+    console.log(`PDF uploaded to storage: ${filePath}`);
+    
+    // Get the uploaded file data to process
+    const { data: fileData, error: fileError } = await supabaseAdmin.storage
+      .from("job_pdfs")
+      .download(filePath);
+    
+    if (fileError || !fileData) {
+      console.error("Error downloading PDF from storage:", fileError);
+      return errorResponse("Failed to process PDF", 500, fileError);
+    }
+    
+    // Extract text from the PDF using Gemini
+    const extractedText = await extractTextFromPDFWithGemini(new Uint8Array(await fileData.arrayBuffer()));
+    console.log(`Extracted text: ${extractedText.length} characters`);
+    
+    if (!extractedText || extractedText.length < 50) {
+      return errorResponse("Failed to extract meaningful text from PDF", 400);
+    }
+    
+    // Process the job posting with the extracted text
+    const result = await processJobPosting({
+      jobDescription: extractedText,
+      userId: userId,
+    });
+    
     return new Response(
-      JSON.stringify({ success: false, error: `Server error: ${error.message}` }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      JSON.stringify({
+        ...result,
+        textLength: extractedText.length,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  } catch (error) {
+    console.error("Error in handlePDFUpload:", error);
+    return errorResponse("Failed to process PDF", 500, error.message);
+  }
+}
+
+// Main request handler
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    if (req.method !== "POST") {
+      return errorResponse("Only POST requests are supported", 405);
+    }
+
+    const contentType = req.headers.get("content-type") || "";
+    
+    // Handle form data (PDF upload)
+    if (contentType.includes("multipart/form-data")) {
+      return await handlePDFUpload(await req.formData());
+    }
+    
+    // Handle JSON data (direct job description)
+    if (contentType.includes("application/json")) {
+      const jsonData = await req.json();
+      
+      if (!jsonData.jobDescription || typeof jsonData.jobDescription !== "string") {
+        return errorResponse("Job description is required");
+      }
+      
+      if (jsonData.jobDescription.trim().length < 50) {
+        return errorResponse("Job description is too short");
+      }
+      
+      const result = await processJobPosting({
+        jobDescription: jsonData.jobDescription,
+        userId: jsonData.userId,
+      });
+      
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    // Unsupported content type
+    return errorResponse("Unsupported content type", 415);
+
+  } catch (error) {
+    console.error("Unhandled error:", error);
+    return errorResponse(
+      "An unexpected error occurred", 
+      500, 
+      { message: error.message }
     );
   }
 });

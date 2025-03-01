@@ -30,6 +30,7 @@ const JobInputSection = ({
 }: JobInputSectionProps) => {
   const [fileName, setFileName] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -41,24 +42,37 @@ const JobInputSection = ({
       return;
     }
 
-    // Check file size (limit to 10MB for better compatibility)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("PDF file is too large (max 10MB). Please use a smaller file.");
+    // Check file size (limit to 5MB for better success rate with Gemini API)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("PDF file is too large (max 5MB). Please use a smaller file.");
       return;
     }
 
     setFileName(file.name);
     setIsUploading(true);
+    setUploadProgress(10); // Start progress indication
+    
+    // Simulate progress while uploading
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        const newValue = prev + Math.floor(Math.random() * 8);
+        return newValue < 90 ? newValue : 90; // Cap at 90% until actually complete
+      });
+    }, 500);
     
     if (handleFileUpload) {
       try {
         await handleFileUpload(file);
+        clearInterval(progressInterval);
+        setUploadProgress(100);
         toast.success(`Successfully uploaded and processed ${file.name}`);
       } catch (error) {
         console.error("Error uploading PDF:", error);
-        toast.error("Failed to process PDF file. Please try again or use a different file.");
+        toast.error("Failed to process PDF file. The file might be too large or complex.");
       } finally {
         setIsUploading(false);
+        // Reset progress after a short delay
+        setTimeout(() => setUploadProgress(0), 1000);
       }
     }
   };
@@ -116,6 +130,15 @@ const JobInputSection = ({
         )}
       </div>
       
+      {uploadProgress > 0 && (
+        <div className="w-full bg-gray-700 rounded-full h-2.5 mb-4">
+          <div 
+            className="bg-primary h-2.5 rounded-full transition-all duration-300 ease-in-out"
+            style={{ width: `${uploadProgress}%` }}
+          ></div>
+        </div>
+      )}
+      
       {(isProcessing || isUploading) && !hasError && (
         <div className="flex items-center justify-center gap-2 text-primary matrix-loader p-2">
           <span className="glitch">{isUploading ? 'Processing PDF...' : 'Processing job data...'}</span>
@@ -125,7 +148,7 @@ const JobInputSection = ({
       {hasError && (
         <div className="text-center text-destructive cyber-card p-4">
           <p className="glitch">Failed to process job posting</p>
-          <p className="text-sm mt-2">Try using the refresh button, a different PDF, or submitting again</p>
+          <p className="text-sm mt-2">Try using a smaller or simpler PDF file, or manually paste the job description</p>
         </div>
       )}
     </div>

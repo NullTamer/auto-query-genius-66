@@ -116,7 +116,7 @@ const Index = () => {
       
       if (error) {
         console.error('Error invoking edge function:', error);
-        throw new Error('Failed to process PDF');
+        throw new Error('Failed to process PDF: ' + error.message);
       }
       
       console.log('Edge function response:', data);
@@ -148,7 +148,7 @@ const Index = () => {
       
     } catch (error) {
       console.error('Error processing PDF:', error);
-      toast.error('Failed to process PDF');
+      toast.error('Failed to process PDF. The file might be too large or complex.');
       setHasError(true);
     } finally {
       setIsProcessing(false);
