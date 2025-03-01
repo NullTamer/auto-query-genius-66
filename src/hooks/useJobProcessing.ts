@@ -48,26 +48,26 @@ export const useJobProcessing = () => {
       
       console.log('Edge function response:', data);
       
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process job posting');
+      if (!data || !data.success || !data.jobId) {
+        throw new Error(data?.error || 'Failed to process job posting');
       }
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
-      toast.success('Job processing completed');
-      console.log('Processing completed for job ID:', jobId);
+      toast.success('Job processing initiated');
+      console.log('Processing initiated for job ID:', jobId);
       return jobId;
 
     } catch (error) {
       console.error('Error processing job:', error);
       toast.error('Failed to process job posting');
       setHasError(true);
-      setIsProcessing(false); // Important: Clear processing state on error
       return null;
     } finally {
       processingRef.current = false;
-      setIsProcessing(false); // Ensure processing state is cleared in all cases
+      // Note: We don't set isProcessing to false here because we want to 
+      // wait for the realtime updates to indicate completion
     }
   }, []);
 

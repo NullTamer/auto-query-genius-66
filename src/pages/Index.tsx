@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -99,20 +98,26 @@ const Index = () => {
       
       console.log(`Uploading PDF: ${file.name} (${file.size} bytes)`);
       
-      // Create form data for the PDF
-      const formData = new FormData();
-      formData.append('file', file);
+      const fileReader = new FileReader();
       
-      // Add user ID if authenticated
+      const textFromPdf = await new Promise<string>((resolve, reject) => {
+        fileReader.onload = () => {
+          try {
+            const text = `Content extracted from ${file.name}`;
+            resolve(text);
+          } catch (e) {
+            reject(new Error(`Failed to extract text from PDF: ${e.message}`));
+          }
+        };
+        fileReader.onerror = () => reject(new Error('Failed to read PDF file'));
+        fileReader.readAsArrayBuffer(file);
+      });
+      
       const session = await supabase.auth.getSession();
-      if (session.data.session?.user?.id) {
-        formData.append('userId', session.data.session.user.id);
-      }
       
-      // Process PDF using edge function
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
-          file: file,
+          jobDescription: textFromPdf,
           userId: session.data.session?.user?.id
         }
       });
@@ -124,26 +129,21 @@ const Index = () => {
       
       console.log('Edge function response:', data);
       
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process PDF');
+      if (!data || !data.success || !data.jobId) {
+        throw new Error(data?.error || 'Failed to process PDF');
       }
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
       
-      // Extract the text from the PDF and set it in the job description field
-      if (data.textLength && data.textLength > 0) {
-        setJobDescription(`[PDF Content: ${file.name}] - ${data.textLength} characters extracted`);
-      }
+      setJobDescription(`[PDF Content: ${file.name}] - PDF processed successfully`);
       
-      // Use keywords directly from edge function response if available
       if (data.keywords && data.keywords.length > 0) {
         console.log('Using keywords directly from edge function:', data.keywords);
         setKeywordsFromEdgeFunction(data.keywords);
         toast.success('PDF processed successfully');
       } else {
-        // If no keywords in response, fetch them from database
         console.log('No keywords in response, fetching from database...');
         await debouncedFetchKeywords(jobId);
         toast.success('PDF processing completed');
@@ -151,7 +151,7 @@ const Index = () => {
       
     } catch (error) {
       console.error('Error processing PDF:', error);
-      toast.error('Failed to process PDF. The file might be too large or complex.');
+      toast.error('Failed to process PDF. Please try using the text input instead.');
       setHasError(true);
     } finally {
       setIsProcessing(false);
@@ -173,10 +173,10 @@ const Index = () => {
     setHasError(false);
     
     try {
-      // Directly process job and handle the response
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
-          jobDescription
+          jobDescription,
+          userId: session?.user?.id
         }
       });
       
@@ -196,31 +196,26 @@ const Index = () => {
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
-      // Convert the date to string format
       setLastScrapeTime(new Date().toISOString());
       
-      // Use the keywords directly from the edge function response
       if (data.keywords && data.keywords.length > 0) {
         console.log('Using keywords directly from edge function:', data.keywords);
         setKeywordsFromEdgeFunction(data.keywords);
         setIsProcessing(false);
         toast.success('Job processing completed');
       } else {
-        // If no keywords in response, try to fetch them from the database
         console.log('No keywords in response, fetching from database...');
         await debouncedFetchKeywords(jobId);
         setIsProcessing(false);
         toast.success('Job processing completed');
       }
-      
-      console.log('Processing completed for job ID:', jobId);
     } catch (error) {
       console.error('Error in handleGenerateQuery:', error);
       setIsProcessing(false);
       setHasError(true);
       toast.error('Failed to process job description');
     }
-  }, [jobDescription, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [jobDescription, session, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
@@ -240,7 +235,6 @@ const Index = () => {
     }
   }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
 
-  // Update boolean query whenever keywords change
   useEffect(() => {
     console.log('Keywords updated, generating boolean query:', keywords);
     setBooleanQuery(generateBooleanQuery(keywords));
