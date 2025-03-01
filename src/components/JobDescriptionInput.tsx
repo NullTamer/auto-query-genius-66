@@ -34,6 +34,33 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         const result = await mammoth.extractRawText({ arrayBuffer });
         onChange(result.value);
         toast.success("DOCX file processed successfully");
+      } else if (fileExtension === 'pdf') {
+        // For PDF files, we need to use a FileReader to read as arraybuffer
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            // Send the PDF to the server for text extraction
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const response = await fetch('/api/extract-pdf-text', {
+              method: 'POST',
+              body: formData,
+            });
+            
+            if (!response.ok) {
+              throw new Error('Failed to extract text from PDF');
+            }
+            
+            const data = await response.json();
+            onChange(data.text);
+            toast.success("PDF file processed successfully");
+          } catch (error) {
+            console.error("Error processing PDF:", error);
+            toast.error("Unable to extract text from PDF. Please try a different file format or copy the text manually.");
+          }
+        };
+        reader.readAsArrayBuffer(file);
       } else if (fileExtension === 'txt' || fileExtension === 'doc') {
         // Process text files using FileReader
         const reader = new FileReader();
@@ -44,7 +71,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         };
         reader.readAsText(file);
       } else {
-        toast.error("Unsupported file format. Please upload .txt, .doc, or .docx files.");
+        toast.error("Unsupported file format. Please upload .txt, .doc, .docx, or .pdf files.");
       }
     } catch (error) {
       console.error("Error processing file:", error);
@@ -73,7 +100,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx"
+              accept=".txt,.doc,.docx,.pdf"
               className="hidden"
               onChange={handleFileUpload}
             />
