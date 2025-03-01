@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -98,26 +99,39 @@ const Index = () => {
       
       console.log(`Uploading PDF: ${file.name} (${file.size} bytes)`);
       
+      // Create a FileReader to read the PDF content
       const fileReader = new FileReader();
       
-      const textFromPdf = await new Promise<string>((resolve, reject) => {
+      // Use an ArrayBuffer to handle binary PDF data
+      fileReader.readAsArrayBuffer(file);
+      
+      // Process the file once loaded
+      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
         fileReader.onload = () => {
-          try {
-            const text = `Content extracted from ${file.name}`;
-            resolve(text);
-          } catch (e) {
-            reject(new Error(`Failed to extract text from PDF: ${e.message}`));
+          if (fileReader.result instanceof ArrayBuffer) {
+            resolve(fileReader.result);
+          } else {
+            reject(new Error('FileReader did not return an ArrayBuffer'));
           }
         };
         fileReader.onerror = () => reject(new Error('Failed to read PDF file'));
-        fileReader.readAsArrayBuffer(file);
       });
       
+      console.log('PDF file read as ArrayBuffer, now processing...');
+      
+      // Get the current user session
       const session = await supabase.auth.getSession();
       
+      // Create form data with the PDF file for uploading to the edge function
+      const formData = new FormData();
+      formData.append('file', new Blob([arrayBuffer]), file.name);
+      
+      // Invoke the edge function with the PDF content
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
-          jobDescription: textFromPdf,
+          isPdf: true,
+          fileName: file.name,
+          fileData: Array.from(new Uint8Array(arrayBuffer)),
           userId: session.data.session?.user?.id
         }
       });
@@ -137,7 +151,8 @@ const Index = () => {
       setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
       
-      setJobDescription(`[PDF Content: ${file.name}] - PDF processed successfully`);
+      // Update the job description with a reference to the processed PDF
+      setJobDescription(data.extractedText || `[PDF Content: ${file.name}]`);
       
       if (data.keywords && data.keywords.length > 0) {
         console.log('Using keywords directly from edge function:', data.keywords);

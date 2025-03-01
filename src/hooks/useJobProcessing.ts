@@ -32,10 +32,11 @@ export const useJobProcessing = () => {
       
       console.log('Invoking edge function to process job description');
       
-      // Invoke the edge function instead of direct database manipulation
+      // Invoke the edge function with the job description text
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription,
+          isPdf: false,
           // Pass the user ID if available, otherwise proceed as guest
           userId: session.data.session?.user?.id
         }
