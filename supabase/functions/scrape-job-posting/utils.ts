@@ -1,34 +1,36 @@
 
-// Temporary keyword extraction function that doesn't rely on Gemini
-export async function extractKeywords(jobDescription: string) {
-  // Simple implementation that extracts words that appear frequently
-  const text = jobDescription.toLowerCase();
+export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> => {
+  let lastError: any;
   
-  // Remove common punctuation and split into words
-  const words = text
-    .replace(/[^\w\s]/g, ' ')
-    .split(/\s+/)
-    .filter(word => word.length > 3); // Only consider words longer than 3 characters
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      if (i > 0) {
+        const backoffDelay = baseDelay * Math.pow(2, i - 1);
+        console.log(`Retry ${i + 1} with delay ${backoffDelay}ms`);
+        await delay(backoffDelay);
+      }
+      return await fn();
+    } catch (error) {
+      console.error(`Attempt ${i + 1} failed:`, error);
+      lastError = error;
+      
+      if (i < maxRetries - 1 && (error.status === 429 || error.status === 404)) {
+        continue;
+      }
+      throw error;
+    }
+  }
   
-  // Count word frequency
-  const wordFrequency: Record<string, number> = {};
-  words.forEach(word => {
-    wordFrequency[word] = (wordFrequency[word] || 0) + 1;
-  });
-  
-  // Filter out common words
-  const commonWords = [
-    'the', 'and', 'for', 'with', 'that', 'have', 'this', 'will', 'your', 'from',
-    'they', 'work', 'what', 'about', 'which', 'their', 'there', 'more', 'when',
-    'experience', 'our', 'team', 'role', 'skills', 'working', 'position', 'able'
-  ];
-  
-  // Create an array of keyword objects sorted by frequency
-  const keywords = Object.entries(wordFrequency)
-    .filter(([word, _]) => !commonWords.includes(word))
-    .map(([keyword, frequency]) => ({ keyword, frequency }))
-    .sort((a, b) => b.frequency - a.frequency)
-    .slice(0, 25); // Take the top 25 keywords
-  
-  return keywords;
-}
+  throw lastError;
+};
+
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};

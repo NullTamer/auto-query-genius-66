@@ -1,6 +1,6 @@
 
 export const generateBooleanQuery = (keywords: Array<{ keyword: string; category?: string; frequency: number }>) => {
-  if (!keywords || keywords.length === 0) return "";
+  if (keywords.length === 0) return "";
 
   // Sort keywords by frequency, highest first
   const sortedKeywords = [...keywords].sort((a, b) => b.frequency - a.frequency);
