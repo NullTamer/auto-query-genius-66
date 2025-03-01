@@ -1,6 +1,5 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { processJobPosting } from "./gemini-service.ts";
 import { saveKeywords, saveJobPosting } from "./job-repository.ts";
 import { extractKeywords } from "./utils.ts";
 
@@ -32,8 +31,8 @@ serve(async (req) => {
     // Save job posting to database
     const jobId = await saveJobPosting(jobDescription);
     
-    // Extract keywords using Gemini
-    const extractedKeywords = await processJobPosting(jobDescription);
+    // Extract keywords using utility function (not using Gemini directly)
+    const extractedKeywords = await extractKeywords(jobDescription);
     console.log(`Extracted ${extractedKeywords.length} keywords: ${JSON.stringify(extractedKeywords, null, 2)}`);
     
     // Save keywords to database

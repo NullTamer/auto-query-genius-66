@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useKeywords } from '@/hooks/useKeywords';
@@ -58,29 +57,23 @@ export const useJobProcessingManager = (jobDescription: string) => {
           }));
           
           setKeywordsFromEdgeFunction(formattedKeywords);
-          setIsProcessing(false);
           toast.success('Job processed successfully');
         } else {
           // Otherwise fetch them from the database
           console.log('No keywords in direct response, fetching from database...');
           debouncedFetchKeywords(data.id);
-          
-          // Set a safety timeout to clear processing state if keywords fetch takes too long
-          setTimeout(() => {
-            setIsProcessing(false);
-            toast.success('Job processed, fetching keywords...');
-          }, 5000); // Set a maximum wait time of 5 seconds
+          toast.success('Job processed, fetching keywords...');
         }
       } else {
         setHasError(true);
-        setIsProcessing(false);
         toast.error('No job data returned');
       }
     } catch (error: any) {
       console.error('Error processing job:', error);
       setHasError(true);
-      setIsProcessing(false);
       toast.error('An error occurred while processing the job: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsProcessing(false);
     }
   }, [jobDescription, isProcessing, debouncedFetchKeywords, resetKeywords, setKeywordsFromEdgeFunction]);
 
