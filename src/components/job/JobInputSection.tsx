@@ -2,7 +2,7 @@
 import { useState, useRef } from "react";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Upload, FileText } from "lucide-react";
+import { RefreshCw, Upload, FileText, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface JobInputSectionProps {
