@@ -4,6 +4,42 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { extractKeywords } from '../_shared/keywordExtraction.ts';
 import { processJobPosting } from '../_shared/jobProcessing.ts';
+import * as pdfjs from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js';
+
+// Initialize PDF.js worker
+const PDFJS_WORKER_SRC = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.worker.min.js';
+pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+
+async function extractTextFromPDF(pdfData: ArrayBuffer): Promise<string> {
+  try {
+    console.log('Loading PDF document...');
+    const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
+    console.log(`PDF loaded with ${pdf.numPages} pages`);
+    
+    let fullText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      console.log(`Processing page ${i}/${pdf.numPages}`);
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += pageText + '\n';
+    }
+    
+    console.log('Text extraction complete');
+    return fullText;
+  } catch (error) {
+    console.error('Error extracting text from PDF:', error);
+    throw new Error(`Failed to extract text from PDF: ${error.message}`);
+  }
+}
+
+function sanitizeText(text: string): string {
+  // Remove non-printable characters, excessive whitespace, etc.
+  return text
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+    .replace(/\s+/g, ' ')                         // Replace multiple spaces with one
+    .trim();                                      // Trim leading/trailing spaces
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -23,16 +59,26 @@ serve(async (req) => {
       jobDescription = formData.get('jobDescription') as string || '';
 
       if (pdfFile) {
-        // Here you would extract text from the PDF
-        // This is a placeholder for PDF text extraction
-        // You would need to implement PDF parsing logic here
-        
-        // For now, we'll just use the file name as a placeholder
         console.log(`Processing PDF file: ${pdfFile.name}`);
         
-        // If jobDescription is empty but we have a PDF, we could set a placeholder
-        if (!jobDescription) {
-          jobDescription = `Content extracted from ${pdfFile.name}`;
+        try {
+          // Extract text from PDF
+          const pdfArrayBuffer = await pdfFile.arrayBuffer();
+          const extractedText = await extractTextFromPDF(pdfArrayBuffer);
+          
+          // Sanitize extracted text
+          const sanitizedText = sanitizeText(extractedText);
+          
+          console.log('Extracted text from PDF:', sanitizedText.substring(0, 200) + '...');
+          
+          // Use extracted text as job description
+          jobDescription = sanitizedText;
+        } catch (pdfError) {
+          console.error('Error processing PDF:', pdfError);
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to process PDF: ${pdfError.message}` }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+          );
         }
       }
     } else {

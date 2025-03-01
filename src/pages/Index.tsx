@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -94,6 +93,7 @@ const Index = () => {
     resetKeywords();
     setBooleanQuery("");
     setIsProcessing(true); // Ensure we set processing state immediately
+    setHasError(false);
     
     try {
       let requestBody: any = { jobDescription };
@@ -101,13 +101,14 @@ const Index = () => {
       
       // If a PDF file was selected, use FormData instead of JSON
       if (selectedPdfFile) {
+        console.log('Using FormData for PDF upload:', selectedPdfFile.name);
+        
         const formData = new FormData();
         formData.append('file', selectedPdfFile);
         formData.append('jobDescription', jobDescription);
         
-        requestBody = null;
+        requestBody = formData;
         requestOptions = { 
-          body: formData,
           headers: {} // Remove default Content-Type header when using FormData
         };
       }
@@ -184,9 +185,9 @@ const Index = () => {
   const handlePdfSelect = (file: File) => {
     console.log('PDF file selected:', file.name);
     setSelectedPdfFile(file);
+    handleGenerateQuery(); // Auto-trigger processing when PDF is selected
   };
 
-  // Update boolean query whenever keywords change
   useEffect(() => {
     console.log('Keywords updated, generating boolean query:', keywords);
     setBooleanQuery(generateBooleanQuery(keywords));
