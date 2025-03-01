@@ -47,13 +47,6 @@ function extractKeywords(text: string): Keyword[] {
   return keywords;
 }
 
-// Simple function to save job posting and return an ID
-function saveJobPosting(description: string): number {
-  // In a real implementation, this would save to a database
-  // For now, just return a fake ID
-  return Math.floor(Math.random() * 10000);
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -61,7 +54,19 @@ serve(async (req) => {
   }
 
   try {
-    const { jobDescription } = await req.json();
+    // Parse request body
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      console.error("Failed to parse JSON:", e);
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON in request body" }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { jobDescription } = body;
     
     if (!jobDescription || typeof jobDescription !== 'string') {
       return new Response(
@@ -71,10 +76,9 @@ serve(async (req) => {
     }
 
     console.log(`Processing job posting: ${jobDescription.slice(0, 100)}...`);
-    console.log(`Job description length: ${jobDescription.length}`);
-
-    // Save job posting to database (in this simplified version, it just returns a fake ID)
-    const jobId = saveJobPosting(jobDescription);
+    
+    // Generate a fake job ID (in a real app, this would be a database ID)
+    const jobId = Math.floor(Math.random() * 10000);
     
     // Extract keywords using simple function
     const extractedKeywords = extractKeywords(jobDescription);
