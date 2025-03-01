@@ -24,11 +24,11 @@ const KeywordDisplay: React.FC<KeywordDisplayProps> = ({
     <Card className="cyber-card p-4 md:p-6">
       <h2 className="text-xl md:text-2xl font-semibold text-primary neon-glow mb-4">
         <Terminal className="inline mr-2 h-5 w-5" />
-        Keywords ({keywords.length})
+        Keywords ({keywords?.length || 0})
       </h2>
       <ScrollArea className="h-[200px] pr-4 matrix-loader">
         <div className="flex flex-wrap gap-2">
-          {keywords.length === 0 ? (
+          {!keywords || keywords.length === 0 ? (
             <div className="text-muted-foreground italic">
               No keywords extracted yet...
             </div>

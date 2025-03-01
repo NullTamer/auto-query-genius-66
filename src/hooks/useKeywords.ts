@@ -61,7 +61,6 @@ export const useKeywords = () => {
       fetchInProgress.current = true;
       console.log('Fetching keywords for job ID:', jobId);
       
-      // Only select columns that exist in the database
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
         .select('keyword, frequency')
@@ -70,7 +69,9 @@ export const useKeywords = () => {
 
       if (error) {
         console.error('Error fetching keywords:', error);
-        throw error;
+        toast.error('Failed to fetch keywords: ' + error.message);
+        fetchInProgress.current = false;
+        return;
       }
 
       console.log('Raw keywords data:', keywordsData);
@@ -93,6 +94,7 @@ export const useKeywords = () => {
       } else {
         console.log('Max retries reached, stopping fetch attempts');
         retryCount.current = 0;
+        toast.error('No keywords found after multiple attempts');
       }
     } catch (error) {
       console.error('Error fetching keywords:', error);
@@ -129,22 +131,22 @@ export const useKeywords = () => {
     };
   }, []);
 
-  // Update our useKeywords hook to also handle direct keyword data from the edge function response
   const setKeywordsFromEdgeFunction = useCallback((edgeFunctionKeywords: Array<{keyword: string, frequency: number}>) => {
     if (edgeFunctionKeywords && edgeFunctionKeywords.length > 0) {
       console.log('Setting keywords directly from edge function response:', edgeFunctionKeywords);
       setKeywords(edgeFunctionKeywords);
       setUpdateCount(prev => prev + 1);
+    } else {
+      console.log('No keywords received from edge function');
     }
   }, []);
 
-  // Creating a debounced version of fetchKeywords using the previously defined fetchKeywords function
   const debouncedFetchKeywords = useCallback(
     debounce((jobId: number) => {
       setupRealtimeSubscription(jobId);
       fetchKeywords(jobId);
     }, 300),
-    [setupRealtimeSubscription, fetchKeywords]
+    [setupRealtimeSubscription]
   );
 
   return {
