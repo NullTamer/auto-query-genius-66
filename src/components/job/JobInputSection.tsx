@@ -31,6 +31,7 @@ const JobInputSection = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,6 +52,7 @@ const JobInputSection = ({
     setFileName(file.name);
     setIsUploading(true);
     setUploadProgress(10); // Start progress indication
+    setErrorDetails(null);
     
     // Simulate progress while uploading
     const progressInterval = setInterval(() => {
@@ -68,17 +70,30 @@ const JobInputSection = ({
         toast.success(`Successfully uploaded and processed ${file.name}`);
       } catch (error) {
         console.error("Error uploading PDF:", error);
-        toast.error("Failed to process PDF file. The file might be too large or complex.");
+        clearInterval(progressInterval);
+        setUploadProgress(0);
+        setErrorDetails(error.message || "Failed to process PDF");
+        toast.error("Failed to process PDF file. The file might be too complex or corrupted.");
       } finally {
         setIsUploading(false);
         // Reset progress after a short delay
-        setTimeout(() => setUploadProgress(0), 1000);
+        setTimeout(() => {
+          if (setUploadProgress(prev => prev === 100 ? 0 : prev));
+        }, 2000);
       }
     }
   };
 
   const triggerFileInput = () => {
     fileInputRef.current?.click();
+  };
+
+  const clearFile = () => {
+    setFileName(null);
+    setErrorDetails(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -113,6 +128,10 @@ const JobInputSection = ({
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <FileText className="h-4 w-4" />
               <span className="truncate max-w-[150px]">{fileName}</span>
+              <X 
+                className="h-4 w-4 cursor-pointer hover:text-destructive" 
+                onClick={clearFile}
+              />
             </div>
           )}
         </div>
@@ -147,8 +166,13 @@ const JobInputSection = ({
       
       {hasError && (
         <div className="text-center text-destructive cyber-card p-4">
-          <p className="glitch">Failed to process job posting</p>
-          <p className="text-sm mt-2">Try using a smaller or simpler PDF file, or manually paste the job description</p>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <AlertTriangle className="h-5 w-5" />
+            <p className="glitch">Failed to process job posting</p>
+          </div>
+          <p className="text-sm">
+            {errorDetails || "Try using a smaller or simpler PDF file, or manually paste the job description"}
+          </p>
         </div>
       )}
     </div>

@@ -1,225 +1,139 @@
-
-// Follow this setup guide to integrate the Deno SDK: https://deno.land/manual/getting_started/installation
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { getKeywords, processText } from "./gemini-service.ts"
-import { createJobPosting, updateJobPosting } from "./job-repository.ts"
-import { corsHeaders } from "../_shared/cors.ts"
-
-// Create a Supabase client with the Auth context of the logged-in user.
-const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-const supabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { extractKeywordsFromJob } from "./job-repository.ts";
+import { extractTextFromPDFWithGemini } from "./gemini-service.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log("Starting job processing function...")
+    console.log("Processing request to scrape-job-posting");
     
-    // Check if this is a PDF upload (multipart form data)
-    const contentType = req.headers.get('content-type') || ''
-    
+    // Check if this is a form data request (PDF upload)
+    const contentType = req.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
-      return await handlePDFUpload(req)
-    } else {
-      return await handleTextProcessing(req)
+      return await handlePDFUpload(req);
     }
-  } catch (error) {
-    console.error("Error in main function handler:", error)
+    
+    // Otherwise, handle JSON data (direct job description text)
+    const requestData = await req.json();
+    
+    if (!requestData.jobDescription && !requestData.pdfContent) {
+      throw new Error("No job description provided");
+    }
+    
+    const userId = requestData.userId || null;
+    
+    // Process the job description
+    const result = await extractKeywordsFromJob({
+      description: requestData.jobDescription || '',
+      userId
+    });
+    
     return new Response(
-      JSON.stringify({ success: false, error: `Server error: ${error.message}` }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
-  }
-})
+      JSON.stringify(result),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
+  } catch (error) {
+    console.error("Error in scrape-job-posting function:", error);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error.message || "An unknown error occurred" 
+      }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+});
+
+/**
+ * Handles PDF file uploads and processes them for job descriptions
+ */
 async function handlePDFUpload(req: Request) {
   try {
-    const formData = await req.formData()
-    const file = formData.get('file') as File
+    console.log("Processing PDF upload");
+    const formData = await req.formData();
+    const pdfFile = formData.get('file');
     
-    if (!file) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'No file uploaded' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+    if (!pdfFile || !(pdfFile instanceof File)) {
+      throw new Error("No PDF file provided");
     }
     
-    console.log(`Processing PDF upload: ${file.name} (${file.size} bytes)`)
+    console.log(`Processing PDF upload: ${pdfFile.name} (${pdfFile.size} bytes)`);
     
-    // Check file size - 5MB is a good limit for reliable processing
-    if (file.size > 5 * 1024 * 1024) {
+    // Check file size (limit to 5MB)
+    if (pdfFile.size > 5 * 1024 * 1024) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'PDF file is too large (max 5MB). Please use a smaller file or paste text directly.' 
+          error: "PDF file is too large (max 5MB)" 
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
     
-    // Use the serviceRoleClient to access Storage with admin privileges
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
-    
-    // Save PDF to storage 
-    const timestamp = Date.now()
-    const fileName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+    // Generate a unique filename and store in Storage
+    const fileExt = pdfFile.name.split('.').pop()?.toLowerCase() || 'pdf';
+    const timestamp = Date.now();
+    const uniqueFilename = `${timestamp}_${pdfFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     
     // Upload to storage
-    const { data: storageData, error: storageError } = await supabaseAdmin.storage
-      .from('job_pdfs')
-      .upload(fileName, file, {
-        contentType: file.type,
-        upsert: false
-      })
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.7.1");
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
     
-    if (storageError) {
-      console.error("Storage upload error:", storageError)
-      return new Response(
-        JSON.stringify({ success: false, error: `Failed to upload PDF: ${storageError.message}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
+    console.log(`PDF uploaded to storage: ${uniqueFilename}`);
+    
+    // Process PDF to extract text using Gemini API in a more efficient way
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const textContent = await extractTextFromPDFWithGemini(arrayBuffer);
+    
+    if (!textContent || textContent.length === 0) {
+      throw new Error("Could not extract text from PDF");
     }
     
-    console.log(`PDF uploaded to storage: ${fileName}`)
+    // Get the user ID if provided
+    const userId = formData.get('userId')?.toString() || null;
     
-    try {
-      // Create a simpler fallback approach: Create a blob to get a URL
-      const pdfBytes = await file.arrayBuffer()
-      const pdfText = await extractTextFromPDF(file)
-      
-      if (!pdfText || pdfText.length < 50) {
-        throw new Error("Could not extract sufficient text from PDF")
+    // Process the job description from the PDF
+    const result = await extractKeywordsFromJob({
+      description: textContent,
+      userId
+    });
+    
+    // Add the text length to help with debugging
+    return new Response(
+      JSON.stringify({
+        ...result,
+        textLength: textContent.length
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+    
+  } catch (error) {
+    console.error("Error in handlePDFUpload:", error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: `Failed to process PDF: ${error.message}` 
+      }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
-      
-      // Process the text to extract keywords
-      console.log(`Extracted ${pdfText.length} characters of text from PDF`)
-      const keywords = await getKeywords(pdfText)
-      
-      // Create job posting in database
-      const userId = formData.get('userId')?.toString()
-      const jobId = await createJobPosting(pdfText, userId)
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          jobId,
-          textLength: pdfText.length,
-          keywords,
-          message: "PDF processed successfully"
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      )
-    } catch (processingError) {
-      console.error("Error processing PDF content:", processingError)
-      
-      // Create a job posting entry with status 'failed'
-      const userId = formData.get('userId')?.toString()
-      const jobId = await createJobPosting(
-        `Failed to process PDF: ${file.name}. Error: ${processingError.message}`, 
-        userId,
-        'failed'
-      )
-      
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `Failed to process PDF: ${processingError.message}`,
-          jobId
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
-    }
-  } catch (error) {
-    console.error("Error in PDF upload handler:", error)
-    return new Response(
-      JSON.stringify({ success: false, error: `Failed to process PDF: ${error.message}` }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
-  }
-}
-
-async function handleTextProcessing(req: Request) {
-  try {
-    const { jobDescription, userId } = await req.json()
-    
-    if (!jobDescription) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Job description is required" }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
-    }
-    
-    console.log("Processing job description text...")
-    
-    // Create the job posting first, so we have an ID to return
-    const jobId = await createJobPosting(jobDescription, userId)
-    
-    try {
-      // Process the text to extract keywords
-      const keywords = await getKeywords(jobDescription)
-      
-      // Update the job posting status to 'processed'
-      await updateJobPosting(jobId, 'processed')
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          jobId,
-          keywords,
-          message: "Job description processed successfully"
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      )
-    } catch (processingError) {
-      console.error("Error processing job text:", processingError)
-      
-      // Update the job posting status to 'failed'
-      await updateJobPosting(jobId, 'failed')
-      
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `Failed to process job description: ${processingError.message}`,
-          jobId
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
-    }
-  } catch (error) {
-    console.error("Error in text processing handler:", error)
-    return new Response(
-      JSON.stringify({ success: false, error: `Server error: ${error.message}` }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
-  }
-}
-
-async function extractTextFromPDF(file: File): Promise<string> {
-  try {
-    // Using a much simpler approach that relies on browser APIs
-    // Convert the file to a base64 string in smaller chunks to avoid stack overflow
-    const arrayBuffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    
-    // Process the PDF data using Gemini directly instead of trying to extract text first
-    console.log("Processing PDF with Gemini's document understanding capabilities")
-    
-    // Use Gemini to extract text from the PDF by directly asking it to summarize
-    const result = await processText(bytes, file.type);
-    
-    if (!result || result.length < 50) {
-      throw new Error("Failed to extract text from PDF");
-    }
-    
-    return result;
-  } catch (error) {
-    console.error("PDF extraction error:", error);
-    throw new Error(`Failed to extract text from PDF: ${error.message}`);
+    );
   }
 }
