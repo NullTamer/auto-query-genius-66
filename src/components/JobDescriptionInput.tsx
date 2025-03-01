@@ -12,13 +12,15 @@ interface JobDescriptionInputProps {
   onChange: (value: string) => void;
   onSubmit: () => void;
   isProcessing?: boolean;
+  onFileSelect?: (file: File) => void;
 }
 
 const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   value,
   onChange,
   onSubmit,
-  isProcessing = false
+  isProcessing = false,
+  onFileSelect
 }) => {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -43,8 +45,17 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
           toast.success("File processed successfully");
         };
         reader.readAsText(file);
+      } else if (fileExtension === 'pdf') {
+        // For PDF files, we'll just pass the file to the parent component
+        if (onFileSelect) {
+          onFileSelect(file);
+          onChange(`Uploaded PDF: ${file.name}`);
+          toast.success("PDF file uploaded successfully");
+        } else {
+          toast.error("PDF processing is not configured");
+        }
       } else {
-        toast.error("Unsupported file format. Please upload .txt, .doc, or .docx files.");
+        toast.error("Unsupported file format. Please upload .txt, .doc, .docx, or .pdf files.");
       }
     } catch (error) {
       console.error("Error processing file:", error);
@@ -73,7 +84,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx"
+              accept=".txt,.doc,.docx,.pdf"
               className="hidden"
               onChange={handleFileUpload}
             />
@@ -82,7 +93,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Paste your job description here..."
+          placeholder="Paste your job description here or upload a file..."
           className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all"
         />
         <Button

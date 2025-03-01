@@ -13,6 +13,7 @@ interface JobInputSectionProps {
   handleGenerateQuery: () => void;
   handleRefresh: () => void;
   isRefreshing: boolean;
+  onPdfSelect?: (file: File) => void;
 }
 
 const JobInputSection = ({
@@ -23,7 +24,8 @@ const JobInputSection = ({
   currentJobId,
   handleGenerateQuery,
   handleRefresh,
-  isRefreshing
+  isRefreshing,
+  onPdfSelect
 }: JobInputSectionProps) => {
   return (
     <div className="space-y-4">
@@ -32,6 +34,7 @@ const JobInputSection = ({
         onChange={setJobDescription}
         onSubmit={handleGenerateQuery}
         isProcessing={isProcessing}
+        onFileSelect={onPdfSelect}
       />
       <div className="flex items-center justify-center gap-4">
         {isProcessing && !hasError && (

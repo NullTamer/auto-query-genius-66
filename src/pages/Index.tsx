@@ -21,6 +21,7 @@ const Index = () => {
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [session, setSession] = useState<any>(null);
+  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
 
   const {
     isProcessing,
@@ -30,7 +31,7 @@ const Index = () => {
     lastScrapeTime,
     setLastScrapeTime,
     currentJobId,
-    setCurrentJobId, // Make sure this is properly destructured
+    setCurrentJobId,
     processJob
   } = useJobProcessing();
 
@@ -95,11 +96,26 @@ const Index = () => {
     setIsProcessing(true); // Ensure we set processing state immediately
     
     try {
-      // Directly process job and handle the response
+      let requestBody: any = { jobDescription };
+      let requestOptions: any = {};
+      
+      // If a PDF file was selected, use FormData instead of JSON
+      if (selectedPdfFile) {
+        const formData = new FormData();
+        formData.append('file', selectedPdfFile);
+        formData.append('jobDescription', jobDescription);
+        
+        requestBody = null;
+        requestOptions = { 
+          body: formData,
+          headers: {} // Remove default Content-Type header when using FormData
+        };
+      }
+      
+      // Invoke the edge function with the appropriate body
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
-        body: { 
-          jobDescription
-        }
+        body: requestBody,
+        ...requestOptions
       });
       
       if (error) {
@@ -135,6 +151,9 @@ const Index = () => {
         toast.success('Job processing completed');
       }
       
+      // Clear the selected PDF file after processing
+      setSelectedPdfFile(null);
+      
       console.log('Processing completed for job ID:', jobId);
     } catch (error) {
       console.error('Error in handleGenerateQuery:', error);
@@ -142,7 +161,7 @@ const Index = () => {
       setHasError(true);
       toast.error('Failed to process job description');
     }
-  }, [jobDescription, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [jobDescription, selectedPdfFile, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
@@ -161,6 +180,11 @@ const Index = () => {
       setIsRefreshing(false);
     }
   }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
+
+  const handlePdfSelect = (file: File) => {
+    console.log('PDF file selected:', file.name);
+    setSelectedPdfFile(file);
+  };
 
   // Update boolean query whenever keywords change
   useEffect(() => {
@@ -184,6 +208,7 @@ const Index = () => {
             handleGenerateQuery={handleGenerateQuery}
             handleRefresh={handleRefresh}
             isRefreshing={isRefreshing}
+            onPdfSelect={handlePdfSelect}
           />
           <div className="space-y-6">
             <KeywordDisplay
