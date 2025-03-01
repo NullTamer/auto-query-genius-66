@@ -1,12 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
-import * as pdfjs from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.mjs';
 import { corsHeaders, handleCors } from '../_shared/cors.ts';
-
-// Set PDF.js worker source
-const pdfjsWorker = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.mjs');
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // Configure Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -22,31 +17,60 @@ const THROTTLE_DELAY_MS = 2000; // 2 seconds between requests
 const MAX_RETRIES = 3;
 
 /**
- * Extracts text from a PDF file using PDF.js
+ * A simpler function to extract text from PDF using Deno APIs
+ * This works for basic PDFs, more complex formatting may be lost
  */
-async function extractTextFromPdf(pdfData: ArrayBuffer): Promise<string> {
+async function extractTextFromPdf(pdfBytes: Uint8Array): Promise<string> {
   try {
-    // Load the PDF document
-    const pdfDocument = await pdfjs.getDocument({ data: pdfData }).promise;
+    // Convert binary PDF to base64
+    const base64Pdf = btoa(String.fromCharCode(...pdfBytes));
     
-    let fullText = '';
+    // Use Gemini to extract text from PDF
+    // Gemini can extract text from PDFs via its document understanding capabilities
+    console.log(`Using Gemini to extract text from PDF (${pdfBytes.length} bytes)...`);
     
-    // Extract text from each page
-    for (let i = 1; i <= pdfDocument.numPages; i++) {
-      const page = await pdfDocument.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      
-      fullText += pageText + '\n';
+    const response = await fetch(`${geminiUrl}?key=${geminiApiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { 
+                text: "Extract all text content from this PDF. Return only the extracted text, no explanations or formatting." 
+              },
+              {
+                inlineData: {
+                  mimeType: "application/pdf",
+                  data: base64Pdf
+                }
+              }
+            ],
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini API error (${response.status}):`, errorText);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
+
+    const data = await response.json();
+    const extractedText = data.candidates[0]?.content?.parts[0]?.text || '';
     
-    console.log(`Extracted ${fullText.length} characters from PDF (${pdfDocument.numPages} pages)`);
-    return fullText;
+    console.log(`Successfully extracted ${extractedText.length} characters from PDF`);
+    return extractedText;
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
-    throw new Error('Failed to extract text from PDF');
+    throw new Error('Failed to extract text from PDF: ' + error.message);
   }
 }
 
@@ -271,7 +295,7 @@ serve(async (req) => {
       
       // Extract text from PDF
       const arrayBuffer = await pdfFile.arrayBuffer();
-      const extractedText = await extractTextFromPdf(arrayBuffer);
+      const extractedText = await extractTextFromPdf(new Uint8Array(arrayBuffer));
       
       if (!extractedText || extractedText.trim().length === 0) {
         return new Response(
