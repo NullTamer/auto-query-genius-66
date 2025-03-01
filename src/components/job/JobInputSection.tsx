@@ -13,7 +13,6 @@ interface JobInputSectionProps {
   handleGenerateQuery: () => void;
   handleRefresh: () => void;
   isRefreshing: boolean;
-  onPdfSelect?: (file: File) => void;
 }
 
 const JobInputSection = ({
@@ -24,37 +23,27 @@ const JobInputSection = ({
   currentJobId,
   handleGenerateQuery,
   handleRefresh,
-  isRefreshing,
-  onPdfSelect
+  isRefreshing
 }: JobInputSectionProps) => {
-  const [isPdfUploading, setIsPdfUploading] = useState(false);
-  
   return (
     <div className="space-y-4">
       <JobDescriptionInput
         value={jobDescription}
         onChange={setJobDescription}
         onSubmit={handleGenerateQuery}
-        isProcessing={isProcessing || isPdfUploading}
-        onFileSelect={(file) => {
-          if (onPdfSelect) {
-            setIsPdfUploading(true);
-            onPdfSelect(file);
-            // Note: isPdfUploading state will be reset when isProcessing changes
-          }
-        }}
+        isProcessing={isProcessing}
       />
       <div className="flex items-center justify-center gap-4">
-        {(isProcessing || isPdfUploading) && !hasError && (
+        {isProcessing && !hasError && (
           <div className="flex items-center gap-2 text-primary matrix-loader p-2">
-            <span className="glitch">{isPdfUploading ? "Extracting text from PDF..." : "Processing job data..."}</span>
+            <span className="glitch">Processing job data...</span>
           </div>
         )}
         {currentJobId && (
           <Button
             variant="outline"
             onClick={handleRefresh}
-            disabled={isRefreshing || isProcessing || isPdfUploading}
+            disabled={isRefreshing}
             className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
