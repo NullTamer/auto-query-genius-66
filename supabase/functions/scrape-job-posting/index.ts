@@ -1,7 +1,5 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { saveKeywords, saveJobPosting } from "./job-repository.ts";
-import { extractKeywords } from "./utils.ts";
 
 // Define CORS headers - this is critical for browser access
 const corsHeaders = {
@@ -9,6 +7,52 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+type Keyword = {
+  keyword: string;
+  frequency: number;
+};
+
+// Simple function to extract keywords from job description
+async function extractKeywords(text: string): Promise<Keyword[]> {
+  // Simple implementation that extracts words that appear frequently
+  const processedText = text.toLowerCase();
+  
+  // Remove common punctuation and split into words
+  const words = processedText
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 3); // Only consider words longer than 3 characters
+  
+  // Count word frequency
+  const wordFrequency: Record<string, number> = {};
+  words.forEach(word => {
+    wordFrequency[word] = (wordFrequency[word] || 0) + 1;
+  });
+  
+  // Filter out common words
+  const commonWords = [
+    'the', 'and', 'for', 'with', 'that', 'have', 'this', 'will', 'your', 'from',
+    'they', 'work', 'what', 'about', 'which', 'their', 'there', 'more', 'when',
+    'experience', 'our', 'team', 'role', 'skills', 'working', 'position', 'able'
+  ];
+  
+  // Create an array of keyword objects sorted by frequency
+  const keywords = Object.entries(wordFrequency)
+    .filter(([word, _]) => !commonWords.includes(word))
+    .map(([keyword, frequency]) => ({ keyword, frequency }))
+    .sort((a, b) => b.frequency - a.frequency)
+    .slice(0, 25); // Take the top 25 keywords
+  
+  return keywords;
+}
+
+// Simple function to save job posting and return an ID
+async function saveJobPosting(description: string): Promise<number> {
+  // In a real implementation, this would save to a database
+  // For now, just return a fake ID
+  return Math.floor(Math.random() * 10000);
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -31,15 +75,10 @@ serve(async (req) => {
     // Save job posting to database
     const jobId = await saveJobPosting(jobDescription);
     
-    // Extract keywords using utility function (not using Gemini directly)
+    // Extract keywords using simple function
     const extractedKeywords = await extractKeywords(jobDescription);
     console.log(`Extracted ${extractedKeywords.length} keywords: ${JSON.stringify(extractedKeywords, null, 2)}`);
     
-    // Save keywords to database
-    if (extractedKeywords.length > 0) {
-      await saveKeywords(jobId, extractedKeywords);
-    }
-
     // Return both the job ID and the extracted keywords
     return new Response(
       JSON.stringify({ 

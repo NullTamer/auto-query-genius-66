@@ -28,7 +28,7 @@ const KeywordDisplay: React.FC<KeywordDisplayProps> = ({
       </h2>
       <ScrollArea className="h-[200px] pr-4 matrix-loader">
         <div className="flex flex-wrap gap-2">
-          {keywords.length === 0 ? (
+          {!keywords || keywords.length === 0 ? (
             <div className="text-muted-foreground italic">
               No keywords extracted yet...
             </div>
