@@ -21,6 +21,7 @@ const Index = () => {
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [session, setSession] = useState<any>(null);
+  const [isPdfUploading, setIsPdfUploading] = useState(false);
 
   const {
     isProcessing,
@@ -30,7 +31,7 @@ const Index = () => {
     lastScrapeTime,
     setLastScrapeTime,
     currentJobId,
-    setCurrentJobId, // Make sure this is properly destructured
+    setCurrentJobId,
     processJob
   } = useJobProcessing();
 
@@ -88,11 +89,78 @@ const Index = () => {
     onFailed: handleFailed
   });
 
+  const handlePdfUpload = async (file: File) => {
+    try {
+      resetKeywords();
+      setBooleanQuery("");
+      setIsProcessing(true);
+      setIsPdfUploading(true);
+      setHasError(false);
+      
+      console.log(`Uploading PDF: ${file.name} (${file.size} bytes)`);
+      
+      // Create form data for the PDF
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Add user ID if authenticated
+      const session = await supabase.auth.getSession();
+      if (session.data.session?.user?.id) {
+        formData.append('userId', session.data.session.user.id);
+      }
+      
+      // Process PDF using edge function
+      const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
+        body: formData,
+      });
+      
+      if (error) {
+        console.error('Error invoking edge function:', error);
+        throw new Error('Failed to process PDF');
+      }
+      
+      console.log('Edge function response:', data);
+      
+      if (!data.success || !data.jobId) {
+        throw new Error(data.error || 'Failed to process PDF');
+      }
+      
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+      setCurrentJobId(jobId);
+      setLastScrapeTime(new Date().toISOString());
+      
+      // Extract the text from the PDF and set it in the job description field
+      if (data.textLength && data.textLength > 0) {
+        setJobDescription(`[PDF Content: ${file.name}] - ${data.textLength} characters extracted`);
+      }
+      
+      // Use keywords directly from edge function response if available
+      if (data.keywords && data.keywords.length > 0) {
+        console.log('Using keywords directly from edge function:', data.keywords);
+        setKeywordsFromEdgeFunction(data.keywords);
+        toast.success('PDF processed successfully');
+      } else {
+        // If no keywords in response, fetch them from database
+        console.log('No keywords in response, fetching from database...');
+        await debouncedFetchKeywords(jobId);
+        toast.success('PDF processing completed');
+      }
+      
+    } catch (error) {
+      console.error('Error processing PDF:', error);
+      toast.error('Failed to process PDF');
+      setHasError(true);
+    } finally {
+      setIsProcessing(false);
+      setIsPdfUploading(false);
+    }
+  };
+
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
     resetKeywords();
     setBooleanQuery("");
-    setIsProcessing(true); // Ensure we set processing state immediately
+    setIsProcessing(true);
     
     try {
       // Directly process job and handle the response
@@ -178,12 +246,13 @@ const Index = () => {
           <JobInputSection 
             jobDescription={jobDescription}
             setJobDescription={setJobDescription}
-            isProcessing={isProcessing}
+            isProcessing={isProcessing || isPdfUploading}
             hasError={hasError}
             currentJobId={currentJobId}
             handleGenerateQuery={handleGenerateQuery}
             handleRefresh={handleRefresh}
             isRefreshing={isRefreshing}
+            handleFileUpload={handlePdfUpload}
           />
           <div className="space-y-6">
             <KeywordDisplay
@@ -196,7 +265,6 @@ const Index = () => {
 
         <QueryPreview query={booleanQuery} />
         
-        {/* Test Counter Module */}
         <div className="my-8">
           <CounterModule className="max-w-md mx-auto" />
         </div>
