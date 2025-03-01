@@ -111,7 +111,10 @@ const Index = () => {
       
       // Process PDF using edge function
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
-        body: formData,
+        body: { 
+          file: file,
+          userId: session.data.session?.user?.id
+        }
       });
       
       if (error) {
@@ -158,9 +161,16 @@ const Index = () => {
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
+    
+    if (!jobDescription || jobDescription.trim() === '') {
+      toast.error('Please enter a job description');
+      return;
+    }
+    
     resetKeywords();
     setBooleanQuery("");
     setIsProcessing(true);
+    setHasError(false);
     
     try {
       // Directly process job and handle the response
@@ -180,8 +190,8 @@ const Index = () => {
       
       console.log('Edge function response:', data);
       
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process job posting');
+      if (!data || !data.success || !data.jobId) {
+        throw new Error(data?.error || 'Failed to process job posting');
       }
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;

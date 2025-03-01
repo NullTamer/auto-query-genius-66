@@ -16,6 +16,12 @@ export const useJobProcessing = () => {
       return null;
     }
 
+    if (!jobDescription || jobDescription.trim() === '') {
+      console.log('Empty job description, skipping');
+      toast.error('Please enter a job description');
+      return null;
+    }
+
     try {
       const session = await supabase.auth.getSession();
       console.log('Current session:', session);
