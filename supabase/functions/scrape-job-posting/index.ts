@@ -1,3 +1,4 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -25,7 +26,6 @@ serve(async (req) => {
         // Here you would extract text from the PDF
         // This is a placeholder for PDF text extraction
         // You would need to implement PDF parsing logic here
-        // For example, using a PDF parsing library
         
         // For now, we'll just use the file name as a placeholder
         console.log(`Processing PDF file: ${pdfFile.name}`);
