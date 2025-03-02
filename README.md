@@ -1,8 +1,24 @@
+
 # Welcome to your Lovable project
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/214abd93-9534-4b44-b930-f503ab393ac5
+
+## Features
+
+- Extract keywords from job descriptions
+- Support for PDF uploads
+- Generate boolean search queries
+- Real-time keyword extraction and processing
+
+## Limitations
+
+- PDF Storage: Up to 500 MB in total storage
+- Function Memory: Limited to 10 MB per function execution
+- PDF Size: Best results with files under 5 MB
+- Processing Time: Larger PDFs may take longer to process
+- Rate Limits: API calls to OpenAI/Gemini are throttled to avoid rate limits
 
 ## How can I edit this code?
 
@@ -52,13 +68,15 @@ npm run dev
 
 ## What technologies are used for this project?
 
-This project is built with .
+This project is built with:
 
 - Vite
 - TypeScript
 - React
 - shadcn-ui
 - Tailwind CSS
+- Supabase for storage and database
+- Gemini AI for keyword extraction
 
 ## How can I deploy this project?
 
