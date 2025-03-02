@@ -2,7 +2,7 @@
 import { useState } from "react";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, InfoIcon } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface JobInputSectionProps {
@@ -60,11 +60,6 @@ const JobInputSection = ({
         uploadError={uploadError}
       />
       
-      <div className="flex items-center text-sm text-muted-foreground px-4">
-        <InfoIcon className="h-4 w-4 mr-2" />
-        <span>Job description should be at least 100 characters with clear skills and responsibilities.</span>
-      </div>
-      
       <div className="flex items-center justify-between gap-4 px-4">
         {isProcessing && !hasError && (
           <div className="flex items-center gap-2 text-primary matrix-loader p-2">
@@ -91,9 +86,7 @@ const JobInputSection = ({
             <AlertTriangle className="h-5 w-5" />
             <p className="glitch font-bold">Failed to process job posting</p>
           </div>
-          <p className="text-sm mt-2">
-            Try using a more detailed job description with clear skills and responsibilities.
-          </p>
+          <p className="text-sm mt-2">Try using the refresh button or submitting again</p>
         </div>
       )}
       
