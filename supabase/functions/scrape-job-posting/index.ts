@@ -3,7 +3,11 @@
 // https://deno.com/deploy/docs/runtime-api
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createJobPosting, processPdfFile, extractKeywordsFromJob } from "./job-repository.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 console.log("Hello from scrape-job-posting function!");
 
