@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -14,6 +15,7 @@ import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
 import CounterModule from "@/components/CounterModule";
 import StatisticsModule from "@/components/StatisticsModule";
+import JobSearchModule from "@/components/JobSearchModule";
 
 const Index = () => {
   const [jobDescription, setJobDescription] = useState("");
@@ -105,11 +107,12 @@ const Index = () => {
       
       console.log('Uploading PDF file to parse-pdf edge function');
       
+      // Make sure we're passing the correct Content-Type
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
         body: formData,
+        // Don't set content-type here, the browser will set it with the proper boundary
         headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache',
+          'Accept': 'application/json'
         }
       });
       
@@ -255,6 +258,8 @@ const Index = () => {
         </div>
 
         <QueryPreview query={booleanQuery} />
+        
+        {booleanQuery && <JobSearchModule query={booleanQuery} />}
         
         <div className="my-8">
           <CounterModule className="max-w-md mx-auto" />

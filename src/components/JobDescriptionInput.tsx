@@ -3,7 +3,7 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Terminal, Upload, FileText, X, Trash2 } from "lucide-react";
+import { Terminal, Upload, FileText, Trash2 } from "lucide-react";
 import mammoth from "mammoth";
 import { toast } from "sonner";
 
@@ -61,6 +61,11 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
       console.error("Error processing file:", error);
       toast.error("Error processing file. Please try again.");
     }
+
+    // Clear the input value to allow uploading the same file again
+    if (event.target) {
+      event.target.value = '';
+    }
   };
 
   const handleClear = () => {
@@ -87,6 +92,16 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
               <Upload size={16} />
               Upload File
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
+              onClick={handleClear}
+              disabled={isProcessing || !value}
+            >
+              <Trash2 size={16} />
+              Clear
+            </Button>
             <input
               id="file-upload"
               type="file"
@@ -111,19 +126,8 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Paste your job description here or upload a file..."
-            className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all pr-10"
+            className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all"
           />
-          {value && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 right-2 h-7 w-7 opacity-70 hover:opacity-100"
-              onClick={handleClear}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
         </div>
         
         <Button
