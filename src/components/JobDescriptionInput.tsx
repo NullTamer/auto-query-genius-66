@@ -48,9 +48,15 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         };
         reader.readAsText(file);
       } else if (fileExtension === 'pdf') {
-        // For PDF files, we'll upload to Supabase and process on the server
+        // For PDF files, we need to upload to the server for processing
         if (onFileUpload) {
-          await onFileUpload(file);
+          try {
+            toast.info("Uploading PDF for processing...");
+            await onFileUpload(file);
+          } catch (pdfError) {
+            console.error("PDF upload failed:", pdfError);
+            toast.error("PDF upload failed. Please try again.");
+          }
         } else {
           toast.error("PDF upload is not enabled");
         }
