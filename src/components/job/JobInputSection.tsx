@@ -2,7 +2,7 @@
 import { useState } from "react";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, FileText } from "lucide-react";
+import { RefreshCw, FileText, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -31,13 +31,27 @@ const JobInputSection = ({
   isRefreshing,
   pdfUploaded
 }: JobInputSectionProps) => {
+  const [uploadStatus, setUploadStatus] = useState<string>("");
+
+  const handleFileUploadWithStatus = async (file: File) => {
+    try {
+      setUploadStatus("uploading");
+      await handlePdfUpload(file);
+      setUploadStatus("success");
+    } catch (error) {
+      console.error("Error handling PDF upload:", error);
+      setUploadStatus("error");
+      toast.error("Failed to upload PDF. Please try again.");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <JobDescriptionInput
         value={jobDescription}
         onChange={setJobDescription}
         onSubmit={handleGenerateQuery}
-        onFileUpload={handlePdfUpload}
+        onFileUpload={handleFileUploadWithStatus}
         isProcessing={isProcessing}
       />
       <div className="flex items-center justify-center gap-4">
@@ -46,12 +60,28 @@ const JobInputSection = ({
             <span className="glitch">Processing job data...</span>
           </div>
         )}
-        {pdfUploaded && !isProcessing && (
+        
+        {uploadStatus === "uploading" && (
           <div className="flex items-center gap-2 text-primary p-2">
+            <FileText className="h-4 w-4 animate-pulse" />
+            <span>Uploading PDF...</span>
+          </div>
+        )}
+        
+        {(uploadStatus === "success" || pdfUploaded) && !isProcessing && (
+          <div className="flex items-center gap-2 text-green-500 p-2">
             <FileText className="h-4 w-4" />
             <span>PDF uploaded successfully</span>
           </div>
         )}
+        
+        {uploadStatus === "error" && (
+          <div className="flex items-center gap-2 text-destructive p-2">
+            <AlertCircle className="h-4 w-4" />
+            <span>PDF upload failed</span>
+          </div>
+        )}
+        
         {currentJobId && (
           <Button
             variant="outline"
