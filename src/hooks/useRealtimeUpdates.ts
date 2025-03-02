@@ -23,11 +23,10 @@ export const useRealtimeUpdates = ({
         supabase.removeChannel(channelRef.current);
       }
 
-      console.log('[Realtime] Setting up subscription for job ID:', currentJobId);
+      console.log('Setting up realtime updates for job ID:', currentJobId);
 
-      // Create a new channel for this job ID
-      const channel = supabase
-        .channel(`job-status-${currentJobId}`)
+      channelRef.current = supabase
+        .channel(`status-${currentJobId}`)
         .on(
           'postgres_changes',
           {
@@ -37,37 +36,28 @@ export const useRealtimeUpdates = ({
             filter: `id=eq.${currentJobId}`
           },
           (payload) => {
-            console.log('[Realtime] Received update:', payload);
+            console.log('Status update received:', payload);
             const { new: newData } = payload;
             
             if (newData.status === 'processed' && newData.processed_at) {
-              console.log('[Realtime] Job processed successfully, calling onProcessed');
+              console.log('Job processed, triggering callback');
               onProcessed(currentJobId, newData.processed_at);
-            } 
-            else if (newData.status === 'failed') {
-              console.log('[Realtime] Job failed, calling onFailed with:', newData.description);
-              onFailed(newData.description || 'Unknown error occurred');
-            }
-            else {
-              console.log('[Realtime] Job status update to:', newData.status);
+            } else if (newData.status === 'failed') {
+              console.log('Job failed, triggering callback');
+              onFailed(newData.description);
             }
           }
         )
         .subscribe((status) => {
-          console.log(`[Realtime] Subscription status for job ${currentJobId}:`, status);
+          console.log(`Realtime subscription status for job ${currentJobId}:`, status);
         });
-
-      // Store the channel reference
-      channelRef.current = channel;
     }
 
-    // Cleanup function to unsubscribe when the component unmounts or currentJobId changes
     return () => {
       if (channelRef.current) {
-        console.log('[Realtime] Cleaning up subscription');
+        console.log('Cleaning up realtime subscription');
         channelRef.current.unsubscribe();
         supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
       }
     };
   }, [currentJobId, onProcessed, onFailed]);
