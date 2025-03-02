@@ -30,44 +30,22 @@ export const useJobProcessing = () => {
       setIsProcessing(true);
       setHasError(false);
       
-      // Create a payload with debug information
-      const payload = { 
-        jobDescription: jobDescription.trim(),
-        userId: session.data.session?.user?.id || null,
-      };
-      
-      console.log('Preparing to invoke edge function with payload:', {
-        descriptionLength: payload.jobDescription.length,
-        firstChars: payload.jobDescription.substring(0, 50) + '...',
-        hasUserId: !!payload.userId
+      console.log('Invoking edge function to process job description', {
+        descriptionLength: jobDescription.length,
+        hasUserId: !!session.data.session?.user?.id
       });
       
-      // Invoke the edge function with enhanced error handling
+      // Invoke the edge function instead of direct database manipulation
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
-        body: payload
+        body: { 
+          jobDescription: jobDescription.trim(),
+          // Pass the user ID if available, otherwise proceed as guest
+          userId: session.data.session?.user?.id
+        }
       });
       
       if (error) {
         console.error('Error invoking edge function:', error);
-        console.error('Error details:', {
-          name: error.name,
-          message: error.message,
-          status: error.context?.status,
-          statusText: error.context?.statusText
-        });
-        
-        // Try to parse response body if available
-        try {
-          if (error.context?.body) {
-            const reader = error.context.body.getReader();
-            const { value } = await reader.read();
-            const errorBody = new TextDecoder().decode(value);
-            console.error('Error response body:', errorBody);
-          }
-        } catch (bodyError) {
-          console.error('Failed to read error response body:', bodyError);
-        }
-        
         throw error;
       }
       
