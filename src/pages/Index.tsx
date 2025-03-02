@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -151,32 +152,56 @@ const Index = () => {
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
-    
-    if (!jobDescription || jobDescription.trim() === '') {
-      toast.error('Please enter a job description');
-      return;
-    }
-    
     resetKeywords();
     setBooleanQuery("");
     setPdfUploaded(false);
+    setIsProcessing(true);
     
     try {
-      setIsProcessing(true);
-      const jobId = await processJob(jobDescription);
+      const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
+        body: { 
+          jobDescription
+        }
+      });
       
-      if (!jobId) {
+      if (error) {
+        console.error('Error invoking edge function:', error);
+        setIsProcessing(false);
+        setHasError(true);
+        toast.error('Failed to process job posting');
         return;
       }
       
-      console.log('Job processed successfully with ID:', jobId);
+      console.log('Edge function response:', data);
+      
+      if (!data.success || !data.jobId) {
+        throw new Error(data.error || 'Failed to process job posting');
+      }
+      
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+      setCurrentJobId(jobId);
+      setLastScrapeTime(new Date().toISOString());
+      
+      if (data.keywords && data.keywords.length > 0) {
+        console.log('Using keywords directly from edge function:', data.keywords);
+        setKeywordsFromEdgeFunction(data.keywords);
+        setIsProcessing(false);
+        toast.success('Job processing completed');
+      } else {
+        console.log('No keywords in response, fetching from database...');
+        await debouncedFetchKeywords(jobId);
+        setIsProcessing(false);
+        toast.success('Job processing completed');
+      }
+      
+      console.log('Processing completed for job ID:', jobId);
     } catch (error) {
       console.error('Error in handleGenerateQuery:', error);
       setIsProcessing(false);
       setHasError(true);
       toast.error('Failed to process job description');
     }
-  }, [jobDescription, processJob, resetKeywords, setIsProcessing, setHasError]);
+  }, [jobDescription, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
