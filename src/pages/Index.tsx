@@ -105,10 +105,10 @@ const Index = () => {
       const formData = new FormData();
       formData.append('pdf', file);
       
-      console.log('Uploading PDF file to edge function');
+      console.log('Uploading PDF file to parse-pdf edge function');
       
-      // Invoke the edge function for PDF processing
-      const { data, error } = await supabase.functions.invoke('process-pdf', {
+      // Invoke the new edge function for PDF processing
+      const { data, error } = await supabase.functions.invoke('parse-pdf', {
         body: formData,
       });
       
@@ -129,21 +129,19 @@ const Index = () => {
       setPdfUploaded(true);
       setLastScrapeTime(new Date().toISOString());
       
-      // Use the keywords directly from the edge function response
+      toast.success(`PDF "${data.fileName}" uploaded successfully`);
+      
+      // If keywords were immediately returned
       if (data.keywords && data.keywords.length > 0) {
         console.log('Using keywords directly from edge function:', data.keywords);
         setKeywordsFromEdgeFunction(data.keywords);
         setIsProcessing(false);
-        toast.success('PDF processed successfully');
       } else {
-        // If no keywords in response, try to fetch them from the database
-        console.log('No keywords in response, fetching from database...');
-        await debouncedFetchKeywords(jobId);
-        setIsProcessing(false);
-        toast.success('PDF processing completed');
+        // Let the realtime subscription handle the update when processing is complete
+        toast.info('PDF is being processed. Results will appear shortly...');
       }
       
-      console.log('Processing completed for job ID:', jobId);
+      console.log('Processing started for job ID:', jobId);
     } catch (error) {
       console.error('Error uploading PDF:', error);
       toast.error('Failed to process PDF file');

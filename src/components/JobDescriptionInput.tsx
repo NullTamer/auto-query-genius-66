@@ -49,7 +49,6 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         // For PDF files, we'll upload to Supabase and process on the server
         if (onFileUpload) {
           await onFileUpload(file);
-          toast.success("PDF uploaded for processing");
         } else {
           toast.error("PDF upload is not enabled");
         }
@@ -78,12 +77,12 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
               onClick={() => document.getElementById("file-upload")?.click()}
             >
               <Upload size={16} />
-              Upload
+              Upload (DOCX/TXT)
             </Button>
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx,.pdf"
+              accept=".txt,.doc,.docx"
               className="hidden"
               onChange={handleFileUpload}
             />
