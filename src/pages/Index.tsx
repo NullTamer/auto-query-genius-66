@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -67,7 +66,7 @@ const Index = () => {
       await debouncedFetchKeywords(jobId);
       setLastScrapeTime(processedAt);
       setIsProcessing(false);
-      setPdfUploaded(false); // Reset PDF upload status after processing
+      setPdfUploaded(false); 
     } catch (error) {
       console.error('Error handling processed job:', error);
       toast.error('Failed to fetch keywords');
@@ -80,7 +79,7 @@ const Index = () => {
     setHasError(true);
     setIsProcessing(false);
     resetKeywords();
-    setPdfUploaded(false); // Reset PDF upload status on failure
+    setPdfUploaded(false);
     if (description) {
       toast.error(`Processing failed: ${description}`);
     }
@@ -101,15 +100,17 @@ const Index = () => {
       resetKeywords();
       setBooleanQuery("");
       
-      // Create form data for file upload
       const formData = new FormData();
       formData.append('pdf', file);
       
       console.log('Uploading PDF file to parse-pdf edge function');
       
-      // Invoke the new edge function for PDF processing
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
         body: formData,
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
+        }
       });
       
       if (error) {
@@ -131,13 +132,11 @@ const Index = () => {
       
       toast.success(`PDF "${data.fileName}" uploaded successfully`);
       
-      // If keywords were immediately returned
       if (data.keywords && data.keywords.length > 0) {
         console.log('Using keywords directly from edge function:', data.keywords);
         setKeywordsFromEdgeFunction(data.keywords);
         setIsProcessing(false);
       } else {
-        // Let the realtime subscription handle the update when processing is complete
         toast.info('PDF is being processed. Results will appear shortly...');
       }
       
@@ -156,10 +155,9 @@ const Index = () => {
     resetKeywords();
     setBooleanQuery("");
     setPdfUploaded(false);
-    setIsProcessing(true); // Ensure we set processing state immediately
+    setIsProcessing(true);
     
     try {
-      // Directly process job and handle the response
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription
@@ -182,17 +180,14 @@ const Index = () => {
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
-      // Convert the date to string format
       setLastScrapeTime(new Date().toISOString());
       
-      // Use the keywords directly from the edge function response
       if (data.keywords && data.keywords.length > 0) {
         console.log('Using keywords directly from edge function:', data.keywords);
         setKeywordsFromEdgeFunction(data.keywords);
         setIsProcessing(false);
         toast.success('Job processing completed');
       } else {
-        // If no keywords in response, try to fetch them from the database
         console.log('No keywords in response, fetching from database...');
         await debouncedFetchKeywords(jobId);
         setIsProcessing(false);
@@ -226,7 +221,6 @@ const Index = () => {
     }
   }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
 
-  // Update boolean query whenever keywords change
   useEffect(() => {
     console.log('Keywords updated, generating boolean query:', keywords);
     setBooleanQuery(generateBooleanQuery(keywords));
@@ -262,7 +256,6 @@ const Index = () => {
 
         <QueryPreview query={booleanQuery} />
         
-        {/* Test Counter Module */}
         <div className="my-8">
           <CounterModule className="max-w-md mx-auto" />
         </div>

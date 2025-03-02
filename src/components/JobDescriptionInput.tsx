@@ -3,7 +3,7 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Terminal, Upload } from "lucide-react";
+import { Terminal, Upload, FileText } from "lucide-react";
 import mammoth from "mammoth";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ interface JobDescriptionInputProps {
   onSubmit: () => void;
   onFileUpload?: (file: File) => Promise<void>;
   isProcessing?: boolean;
+  uploadedFileName?: string | null;
 }
 
 const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
@@ -20,7 +21,8 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   onChange,
   onSubmit,
   onFileUpload,
-  isProcessing = false
+  isProcessing = false,
+  uploadedFileName = null
 }) => {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -75,23 +77,32 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
               size="sm"
               className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
               onClick={() => document.getElementById("file-upload")?.click()}
+              disabled={isProcessing}
             >
               <Upload size={16} />
-              Upload (DOCX/TXT)
+              Upload File
             </Button>
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx"
+              accept=".txt,.doc,.docx,.pdf"
               className="hidden"
               onChange={handleFileUpload}
             />
           </div>
         </div>
+        
+        {uploadedFileName && (
+          <div className="flex items-center gap-2 text-primary p-2 bg-primary/10 rounded-md">
+            <FileText className="h-4 w-4" />
+            <span className="text-sm truncate max-w-[300px]">File: {uploadedFileName}</span>
+          </div>
+        )}
+        
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Paste your job description here..."
+          placeholder="Paste your job description here or upload a file..."
           className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all"
         />
         <Button
@@ -99,7 +110,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
           className="w-full cyber-card bg-primary/20 hover:bg-primary/30 text-primary hover:text-primary-foreground hover:neon-glow transition-all"
           disabled={!value.trim() && !isProcessing}
         >
-          Generate Boolean Query
+          {isProcessing ? "Processing..." : "Generate Boolean Query"}
         </Button>
       </div>
     </Card>
