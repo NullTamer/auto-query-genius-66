@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -32,7 +31,8 @@ const Index = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob
+    processJob,
+    processPdf
   } = useJobProcessing();
 
   const {
@@ -80,6 +80,8 @@ const Index = () => {
     resetKeywords();
     if (description) {
       toast.error(`Processing failed: ${description}`);
+    } else {
+      toast.error('Processing failed for unknown reason');
     }
   }, [setHasError, setIsProcessing, resetKeywords]);
 
@@ -93,83 +95,35 @@ const Index = () => {
     try {
       resetKeywords();
       setBooleanQuery("");
-      setIsProcessing(true);
       setIsPdfUploading(true);
       setHasError(false);
       
-      console.log(`Uploading PDF: ${file.name} (${file.size} bytes)`);
+      console.log(`Starting PDF upload for: ${file.name} (${file.size} bytes)`);
       
-      // Create a FileReader to read the PDF content
-      const fileReader = new FileReader();
+      const result = await processPdf(file);
       
-      // Use an ArrayBuffer to handle binary PDF data
-      fileReader.readAsArrayBuffer(file);
-      
-      // Process the file once loaded
-      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-        fileReader.onload = () => {
-          if (fileReader.result instanceof ArrayBuffer) {
-            resolve(fileReader.result);
-          } else {
-            reject(new Error('FileReader did not return an ArrayBuffer'));
-          }
-        };
-        fileReader.onerror = () => reject(new Error('Failed to read PDF file'));
-      });
-      
-      console.log('PDF file read as ArrayBuffer, now processing...');
-      
-      // Get the current user session
-      const session = await supabase.auth.getSession();
-      
-      // Create form data with the PDF file for uploading to the edge function
-      const formData = new FormData();
-      formData.append('file', new Blob([arrayBuffer]), file.name);
-      
-      // Invoke the edge function with the PDF content
-      const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
-        body: { 
-          isPdf: true,
-          fileName: file.name,
-          fileData: Array.from(new Uint8Array(arrayBuffer)),
-          userId: session.data.session?.user?.id
-        }
-      });
-      
-      if (error) {
-        console.error('Error invoking edge function:', error);
-        throw new Error('Failed to process PDF: ' + error.message);
+      if (!result) {
+        throw new Error('Failed to process PDF - no result returned');
       }
       
-      console.log('Edge function response:', data);
+      // Update the job description with the extracted text
+      setJobDescription(result.extractedText);
       
-      if (!data || !data.success || !data.jobId) {
-        throw new Error(data?.error || 'Failed to process PDF');
-      }
-      
-      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
-      setCurrentJobId(jobId);
-      setLastScrapeTime(new Date().toISOString());
-      
-      // Update the job description with a reference to the processed PDF
-      setJobDescription(data.extractedText || `[PDF Content: ${file.name}]`);
-      
-      if (data.keywords && data.keywords.length > 0) {
-        console.log('Using keywords directly from edge function:', data.keywords);
-        setKeywordsFromEdgeFunction(data.keywords);
+      // If we got keywords directly, use them
+      if (result.keywords && result.keywords.length > 0) {
+        console.log('Setting keywords from PDF processing result:', result.keywords);
+        setKeywordsFromEdgeFunction(result.keywords);
+        setIsPdfUploading(false);
         toast.success('PDF processed successfully');
       } else {
-        console.log('No keywords in response, fetching from database...');
-        await debouncedFetchKeywords(jobId);
-        toast.success('PDF processing completed');
+        console.log('No keywords in PDF result, awaiting realtime updates');
+        toast.success('PDF uploaded, processing content...');
       }
       
     } catch (error) {
-      console.error('Error processing PDF:', error);
+      console.error('Error handling PDF upload:', error);
       toast.error('Failed to process PDF. Please try using the text input instead.');
       setHasError(true);
-    } finally {
-      setIsProcessing(false);
       setIsPdfUploading(false);
     }
   };
@@ -184,53 +138,23 @@ const Index = () => {
     
     resetKeywords();
     setBooleanQuery("");
-    setIsProcessing(true);
     setHasError(false);
     
     try {
-      const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
-        body: { 
-          jobDescription,
-          userId: session?.user?.id
-        }
-      });
+      const jobId = await processJob(jobDescription);
       
-      if (error) {
-        console.error('Error invoking edge function:', error);
-        setIsProcessing(false);
-        setHasError(true);
-        toast.error('Failed to process job posting');
+      if (!jobId) {
+        toast.error('Failed to start job processing');
         return;
       }
       
-      console.log('Edge function response:', data);
-      
-      if (!data || !data.success || !data.jobId) {
-        throw new Error(data?.error || 'Failed to process job posting');
-      }
-      
-      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
-      setCurrentJobId(jobId);
-      setLastScrapeTime(new Date().toISOString());
-      
-      if (data.keywords && data.keywords.length > 0) {
-        console.log('Using keywords directly from edge function:', data.keywords);
-        setKeywordsFromEdgeFunction(data.keywords);
-        setIsProcessing(false);
-        toast.success('Job processing completed');
-      } else {
-        console.log('No keywords in response, fetching from database...');
-        await debouncedFetchKeywords(jobId);
-        setIsProcessing(false);
-        toast.success('Job processing completed');
-      }
+      console.log(`Job processing started for ID: ${jobId}`);
     } catch (error) {
       console.error('Error in handleGenerateQuery:', error);
-      setIsProcessing(false);
       setHasError(true);
       toast.error('Failed to process job description');
     }
-  }, [jobDescription, session, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [jobDescription, processJob, resetKeywords, setHasError]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;

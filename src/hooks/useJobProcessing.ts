@@ -72,6 +72,83 @@ export const useJobProcessing = () => {
     }
   }, []);
 
+  // Add a new function to process PDFs
+  const processPdf = useCallback(async (file: File) => {
+    if (processingRef.current) {
+      console.log('Already processing a job, skipping');
+      return null;
+    }
+
+    try {
+      const session = await supabase.auth.getSession();
+      console.log('Current session for PDF processing:', session);
+
+      processingRef.current = true;
+      setIsProcessing(true);
+      setHasError(false);
+      
+      console.log(`Processing PDF: ${file.name} (${file.size} bytes)`);
+      
+      // Read the file as ArrayBuffer
+      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const fileReader = new FileReader();
+        fileReader.onload = () => {
+          if (fileReader.result instanceof ArrayBuffer) {
+            resolve(fileReader.result);
+          } else {
+            reject(new Error('FileReader did not return an ArrayBuffer'));
+          }
+        };
+        fileReader.onerror = () => reject(new Error('Failed to read PDF file'));
+        fileReader.readAsArrayBuffer(file);
+      });
+      
+      console.log('PDF file read as ArrayBuffer, sending to edge function...');
+      
+      // Convert ArrayBuffer to Uint8Array for transmission
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Invoke the edge function with the PDF content
+      const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
+        body: { 
+          isPdf: true,
+          fileName: file.name,
+          fileData: Array.from(uint8Array), // Convert to regular array for JSON serialization
+          userId: session.data.session?.user?.id
+        }
+      });
+      
+      if (error) {
+        console.error('Error invoking edge function:', error);
+        throw new Error('Failed to process PDF: ' + error.message);
+      }
+      
+      console.log('Edge function response for PDF:', data);
+      
+      if (!data || !data.success || !data.jobId) {
+        throw new Error(data?.error || 'Failed to process PDF');
+      }
+      
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+      setCurrentJobId(jobId);
+      setLastScrapeTime(new Date().toISOString());
+      
+      return {
+        jobId,
+        extractedText: data.extractedText || `[PDF Content: ${file.name}]`,
+        keywords: data.keywords || []
+      };
+      
+    } catch (error) {
+      console.error('Error processing PDF:', error);
+      setHasError(true);
+      throw error;
+    } finally {
+      processingRef.current = false;
+      // We don't set isProcessing to false here - we wait for realtime updates
+    }
+  }, []);
+
   return {
     isProcessing,
     setIsProcessing,
@@ -81,6 +158,7 @@ export const useJobProcessing = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob
+    processJob,
+    processPdf
   };
 };
