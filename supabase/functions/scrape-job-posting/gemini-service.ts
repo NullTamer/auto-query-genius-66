@@ -1,37 +1,95 @@
 
-import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1";
+import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.1.3";
 
 // Initialize the Gemini API client
 const genAI = new GoogleGenerativeAI(Deno.env.get("GEMINI_API_KEY") || "");
 
 /**
- * Extract keywords from a job description using a fallback method when Gemini is unavailable
+ * Extracts text from a PDF using Gemini's document understanding capabilities
+ * instead of trying to encode the entire PDF as base64
  */
-export async function extractKeywordsWithFallback(jobDescription: string) {
+export async function extractTextFromPDFWithGemini(pdfArrayBuffer: ArrayBuffer): Promise<string> {
   try {
-    console.log("Attempting to extract keywords from job description");
+    console.log("Extracting text from PDF with Gemini");
     
-    // First try to use Gemini
-    try {
-      return await extractKeywordsWithGemini(jobDescription);
-    } catch (geminiError) {
-      console.error("Gemini API error, using fallback method:", geminiError.message);
-      return extractKeywordsWithBasicMethod(jobDescription);
+    // Convert ArrayBuffer to Uint8Array for processing
+    const pdfBytes = new Uint8Array(pdfArrayBuffer);
+    
+    // Process in chunks to avoid stack overflow
+    const MAX_CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+    const fileChunks = [];
+    
+    // Split the PDF into manageable chunks
+    for (let i = 0; i < pdfBytes.length; i += MAX_CHUNK_SIZE) {
+      const chunk = pdfBytes.slice(i, Math.min(i + MAX_CHUNK_SIZE, pdfBytes.length));
+      fileChunks.push(chunk);
     }
+    
+    console.log(`PDF split into ${fileChunks.length} chunks for processing`);
+    
+    // Use Gemini Pro Vision model for document understanding
+    const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+    
+    // Process the first chunk (or a few chunks if needed) to extract main content
+    // Most job descriptions should be in the first few pages
+    const firstChunk = fileChunks[0];
+    
+    // Create a file part from the PDF chunk
+    const filePart = {
+      inlineData: {
+        data: arrayBufferToBase64(firstChunk.buffer),
+        mimeType: "application/pdf"
+      }
+    };
+
+    const prompt = "Extract and return ONLY the text content from this PDF document. Do not include any analysis, just return the raw text content.";
+    
+    // Generate content
+    const result = await model.generateContent([prompt, filePart]);
+    const response = await result.response;
+    const text = response.text();
+    
+    if (!text || text.length === 0) {
+      throw new Error("No text extracted from PDF");
+    }
+    
+    console.log(`Successfully extracted ${text.length} characters from PDF`);
+    return text;
   } catch (error) {
-    console.error("Error extracting keywords:", error);
-    throw new Error(`Failed to extract keywords: ${error.message}`);
+    console.error("Error extracting text from PDF:", error);
+    throw new Error(`Failed to extract text from PDF: ${error.message}`);
   }
+}
+
+/**
+ * Converts an ArrayBuffer to a base64 string
+ */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  // For Deno, we need to create a Uint8Array first
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  
+  // Process in chunks to avoid stack overflow
+  const CHUNK_SIZE = 10000;
+  for (let i = 0; i < bytes.byteLength; i += CHUNK_SIZE) {
+    const chunk = bytes.slice(i, Math.min(i + CHUNK_SIZE, bytes.byteLength));
+    const binaryChunk = Array.from(chunk)
+      .map(b => String.fromCharCode(b))
+      .join('');
+    binary += binaryChunk;
+  }
+  
+  // Use btoa for base64 encoding
+  return btoa(binary);
 }
 
 /**
  * Uses Gemini API to extract keywords from a job description
  */
-async function extractKeywordsWithGemini(jobDescription: string) {
+export async function extractKeywordsWithGemini(jobDescription: string) {
   try {
-    // Use the correct model name for Gemini
-    // Important: The model name might need to be updated based on the latest Gemini API
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    // Use a non-vision model for text processing
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
     // Prepare the prompt for keyword extraction
     const prompt = `
@@ -53,77 +111,15 @@ async function extractKeywordsWithGemini(jobDescription: string) {
     // Extract the JSON array from the response
     const jsonMatch = text.match(/\[\s*\{.*\}\s*\]/s);
     if (!jsonMatch) {
-      console.warn("No valid JSON found in Gemini response, using fallback method");
-      return extractKeywordsWithBasicMethod(jobDescription);
+      throw new Error("Could not extract valid JSON from Gemini response");
     }
 
     const jsonStr = jsonMatch[0];
     const keywords = JSON.parse(jsonStr);
-    console.log(`Successfully extracted ${keywords.length} keywords using Gemini`);
-    
+
     return keywords;
   } catch (error) {
     console.error("Error extracting keywords with Gemini:", error);
-    throw error;
+    throw new Error(`Failed to extract keywords: ${error.message}`);
   }
-}
-
-/**
- * Extracts keywords using a simple regex-based approach as fallback
- */
-function extractKeywordsWithBasicMethod(jobDescription: string) {
-  console.log("Using basic method to extract keywords");
-  
-  // Common tech skills, languages, and frameworks to look for
-  const techTerms = [
-    "JavaScript", "TypeScript", "React", "Vue", "Angular", "Node.js", "Express", 
-    "Python", "Django", "Flask", "Java", "Spring", "C#", ".NET", "PHP", "Laravel",
-    "SQL", "MySQL", "PostgreSQL", "MongoDB", "Redis", "AWS", "Azure", "GCP",
-    "Docker", "Kubernetes", "CI/CD", "Git", "RESTful", "API", "GraphQL",
-    "HTML", "CSS", "SASS", "LESS", "Tailwind", "Bootstrap", "Material UI",
-    "React Native", "Flutter", "iOS", "Android", "Swift", "Kotlin",
-    "Data Science", "Machine Learning", "AI", "Artificial Intelligence",
-    "Agile", "Scrum", "Kanban", "DevOps", "TDD", "BDD"
-  ];
-  
-  // Extract terms that appear in the job description
-  const foundTerms = new Map();
-  
-  // Case insensitive search for each term
-  techTerms.forEach(term => {
-    const regex = new RegExp(`\\b${term.replace(/\./g, '\\.')}\\b`, 'gi');
-    const matches = jobDescription.match(regex);
-    if (matches && matches.length > 0) {
-      // Calculate frequency score (1-10) based on occurrence count
-      const frequency = Math.min(10, Math.max(1, Math.ceil(matches.length / 2)));
-      foundTerms.set(term, frequency);
-    }
-  });
-  
-  // Look for additional capitalized terms that might be technologies or skills
-  const capitalizedWords = jobDescription.match(/\b[A-Z][a-zA-Z]+\b/g) || [];
-  capitalizedWords.forEach(word => {
-    if (word.length > 2 && !techTerms.includes(word)) {
-      foundTerms.set(word, 3); // Default frequency
-    }
-  });
-  
-  // Convert to array of objects
-  const keywords = Array.from(foundTerms).map(([keyword, frequency]) => ({
-    keyword,
-    frequency
-  }));
-  
-  console.log(`Extracted ${keywords.length} keywords using basic method`);
-  return keywords;
-}
-
-/**
- * Extracts text from a PDF using a basic approach
- */
-export function extractTextFromPDF(pdfArrayBuffer: ArrayBuffer): string {
-  // In a real implementation, this would use PDF.js or similar
-  // For now, return a placeholder message
-  console.log("PDF extraction requested, using placeholder text");
-  return "This is placeholder text extracted from the PDF. The actual implementation would use a PDF parsing library.";
 }
