@@ -16,6 +16,12 @@ export const useJobProcessing = () => {
       return null;
     }
 
+    if (!jobDescription || jobDescription.trim() === '') {
+      console.error('Job description is empty');
+      toast.error('Please provide a job description');
+      return null;
+    }
+
     try {
       const session = await supabase.auth.getSession();
       console.log('Current session:', session);
@@ -24,12 +30,15 @@ export const useJobProcessing = () => {
       setIsProcessing(true);
       setHasError(false);
       
-      console.log('Invoking edge function to process job description');
+      console.log('Invoking edge function to process job description', {
+        descriptionLength: jobDescription.length,
+        hasUserId: !!session.data.session?.user?.id
+      });
       
       // Invoke the edge function instead of direct database manipulation
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
-          jobDescription,
+          jobDescription: jobDescription.trim(),
           // Pass the user ID if available, otherwise proceed as guest
           userId: session.data.session?.user?.id
         }
@@ -42,8 +51,8 @@ export const useJobProcessing = () => {
       
       console.log('Edge function response:', data);
       
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process job posting');
+      if (!data || !data.success || !data.jobId) {
+        throw new Error(data?.error || 'Failed to process job posting');
       }
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
