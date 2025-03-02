@@ -21,6 +21,8 @@ const Index = () => {
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [session, setSession] = useState<any>(null);
+  const [pdfUploaded, setPdfUploaded] = useState(false);
+  const [currentPdfPath, setCurrentPdfPath] = useState<string | null>(null);
 
   const {
     isProcessing,
@@ -30,7 +32,7 @@ const Index = () => {
     lastScrapeTime,
     setLastScrapeTime,
     currentJobId,
-    setCurrentJobId, // Make sure this is properly destructured
+    setCurrentJobId,
     processJob
   } = useJobProcessing();
 
@@ -65,6 +67,7 @@ const Index = () => {
       await debouncedFetchKeywords(jobId);
       setLastScrapeTime(processedAt);
       setIsProcessing(false);
+      setPdfUploaded(false); // Reset PDF upload status after processing
     } catch (error) {
       console.error('Error handling processed job:', error);
       toast.error('Failed to fetch keywords');
@@ -77,6 +80,7 @@ const Index = () => {
     setHasError(true);
     setIsProcessing(false);
     resetKeywords();
+    setPdfUploaded(false); // Reset PDF upload status on failure
     if (description) {
       toast.error(`Processing failed: ${description}`);
     }
@@ -88,10 +92,72 @@ const Index = () => {
     onFailed: handleFailed
   });
 
+  const handlePdfUpload = useCallback(async (file: File) => {
+    if (!file) return;
+    
+    try {
+      setIsProcessing(true);
+      setPdfUploaded(false);
+      resetKeywords();
+      setBooleanQuery("");
+      
+      // Create form data for file upload
+      const formData = new FormData();
+      formData.append('pdf', file);
+      
+      console.log('Uploading PDF file to edge function');
+      
+      // Invoke the edge function for PDF processing
+      const { data, error } = await supabase.functions.invoke('process-pdf', {
+        body: formData,
+      });
+      
+      if (error) {
+        console.error('Error invoking edge function:', error);
+        throw error;
+      }
+      
+      console.log('PDF processing response:', data);
+      
+      if (!data.success || !data.jobId) {
+        throw new Error(data.error || 'Failed to process PDF');
+      }
+      
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+      setCurrentJobId(jobId);
+      setCurrentPdfPath(data.pdfPath);
+      setPdfUploaded(true);
+      setLastScrapeTime(new Date().toISOString());
+      
+      // Use the keywords directly from the edge function response
+      if (data.keywords && data.keywords.length > 0) {
+        console.log('Using keywords directly from edge function:', data.keywords);
+        setKeywordsFromEdgeFunction(data.keywords);
+        setIsProcessing(false);
+        toast.success('PDF processed successfully');
+      } else {
+        // If no keywords in response, try to fetch them from the database
+        console.log('No keywords in response, fetching from database...');
+        await debouncedFetchKeywords(jobId);
+        setIsProcessing(false);
+        toast.success('PDF processing completed');
+      }
+      
+      console.log('Processing completed for job ID:', jobId);
+    } catch (error) {
+      console.error('Error uploading PDF:', error);
+      toast.error('Failed to process PDF file');
+      setHasError(true);
+      setIsProcessing(false);
+      setPdfUploaded(false);
+    }
+  }, [debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
     resetKeywords();
     setBooleanQuery("");
+    setPdfUploaded(false);
     setIsProcessing(true); // Ensure we set processing state immediately
     
     try {
@@ -182,8 +248,10 @@ const Index = () => {
             hasError={hasError}
             currentJobId={currentJobId}
             handleGenerateQuery={handleGenerateQuery}
+            handlePdfUpload={handlePdfUpload}
             handleRefresh={handleRefresh}
             isRefreshing={isRefreshing}
+            pdfUploaded={pdfUploaded}
           />
           <div className="space-y-6">
             <KeywordDisplay

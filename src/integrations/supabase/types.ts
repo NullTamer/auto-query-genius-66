@@ -78,7 +78,7 @@ export type Database = {
           posting_url: string | null
           processed_at: string | null
           source_id: number | null
-          status: string | null
+          status: Database["public"]["Enums"]["job_posting_status"] | null
           title: string | null
           updated_at: string | null
           user_id: string | null
@@ -92,7 +92,7 @@ export type Database = {
           posting_url?: string | null
           processed_at?: string | null
           source_id?: number | null
-          status?: string | null
+          status?: Database["public"]["Enums"]["job_posting_status"] | null
           title?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -106,7 +106,7 @@ export type Database = {
           posting_url?: string | null
           processed_at?: string | null
           source_id?: number | null
-          status?: string | null
+          status?: Database["public"]["Enums"]["job_posting_status"] | null
           title?: string | null
           updated_at?: string | null
           user_id?: string | null

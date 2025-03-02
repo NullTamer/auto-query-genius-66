@@ -11,6 +11,7 @@ interface JobDescriptionInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  onFileUpload?: (file: File) => Promise<void>;
   isProcessing?: boolean;
 }
 
@@ -18,6 +19,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
   value,
   onChange,
   onSubmit,
+  onFileUpload,
   isProcessing = false
 }) => {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,8 +45,16 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
           toast.success("File processed successfully");
         };
         reader.readAsText(file);
+      } else if (fileExtension === 'pdf') {
+        // For PDF files, we'll upload to Supabase and process on the server
+        if (onFileUpload) {
+          await onFileUpload(file);
+          toast.success("PDF uploaded for processing");
+        } else {
+          toast.error("PDF upload is not enabled");
+        }
       } else {
-        toast.error("Unsupported file format. Please upload .txt, .doc, or .docx files.");
+        toast.error("Unsupported file format. Please upload .txt, .doc, .docx, or .pdf files.");
       }
     } catch (error) {
       console.error("Error processing file:", error);
@@ -73,7 +83,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
             <input
               id="file-upload"
               type="file"
-              accept=".txt,.doc,.docx"
+              accept=".txt,.doc,.docx,.pdf"
               className="hidden"
               onChange={handleFileUpload}
             />
@@ -88,7 +98,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         <Button
           onClick={onSubmit}
           className="w-full cyber-card bg-primary/20 hover:bg-primary/30 text-primary hover:text-primary-foreground hover:neon-glow transition-all"
-          disabled={!value.trim() || isProcessing}
+          disabled={!value.trim() && !isProcessing}
         >
           Generate Boolean Query
         </Button>

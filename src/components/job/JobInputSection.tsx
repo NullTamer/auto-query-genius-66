@@ -2,7 +2,9 @@
 import { useState } from "react";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, FileText } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface JobInputSectionProps {
   jobDescription: string;
@@ -11,8 +13,10 @@ interface JobInputSectionProps {
   hasError: boolean;
   currentJobId: number | null;
   handleGenerateQuery: () => void;
+  handlePdfUpload: (file: File) => Promise<void>;
   handleRefresh: () => void;
   isRefreshing: boolean;
+  pdfUploaded: boolean;
 }
 
 const JobInputSection = ({
@@ -22,8 +26,10 @@ const JobInputSection = ({
   hasError,
   currentJobId,
   handleGenerateQuery,
+  handlePdfUpload,
   handleRefresh,
-  isRefreshing
+  isRefreshing,
+  pdfUploaded
 }: JobInputSectionProps) => {
   return (
     <div className="space-y-4">
@@ -31,12 +37,19 @@ const JobInputSection = ({
         value={jobDescription}
         onChange={setJobDescription}
         onSubmit={handleGenerateQuery}
+        onFileUpload={handlePdfUpload}
         isProcessing={isProcessing}
       />
       <div className="flex items-center justify-center gap-4">
         {isProcessing && !hasError && (
           <div className="flex items-center gap-2 text-primary matrix-loader p-2">
             <span className="glitch">Processing job data...</span>
+          </div>
+        )}
+        {pdfUploaded && !isProcessing && (
+          <div className="flex items-center gap-2 text-primary p-2">
+            <FileText className="h-4 w-4" />
+            <span>PDF uploaded successfully</span>
           </div>
         )}
         {currentJobId && (
