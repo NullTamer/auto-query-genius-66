@@ -1,6 +1,6 @@
 
 // Follow the Deno Deploy runtime docs:
-// https://deno.com/deploy/docs/runtime-api
+// https://deno.land/std@0.168.0/http/server.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createJobPosting, processPdfFile, extractKeywordsFromJob } from "./job-repository.ts";
 
