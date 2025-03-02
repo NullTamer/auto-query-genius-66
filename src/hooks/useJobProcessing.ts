@@ -16,12 +16,6 @@ export const useJobProcessing = () => {
       return null;
     }
 
-    if (!jobDescription || jobDescription.trim() === '') {
-      console.log('Empty job description, skipping');
-      toast.error('Please enter a job description');
-      return null;
-    }
-
     try {
       const session = await supabase.auth.getSession();
       console.log('Current session:', session);
@@ -48,26 +42,26 @@ export const useJobProcessing = () => {
       
       console.log('Edge function response:', data);
       
-      if (!data || !data.success || !data.jobId) {
-        throw new Error(data?.error || 'Failed to process job posting');
+      if (!data.success || !data.jobId) {
+        throw new Error(data.error || 'Failed to process job posting');
       }
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
-      toast.success('Job processing initiated');
-      console.log('Processing initiated for job ID:', jobId);
+      toast.success('Job processing completed');
+      console.log('Processing completed for job ID:', jobId);
       return jobId;
 
     } catch (error) {
       console.error('Error processing job:', error);
       toast.error('Failed to process job posting');
       setHasError(true);
+      setIsProcessing(false); // Important: Clear processing state on error
       return null;
     } finally {
       processingRef.current = false;
-      // Note: We don't set isProcessing to false here because we want to 
-      // wait for the realtime updates to indicate completion
+      setIsProcessing(false); // Ensure processing state is cleared in all cases
     }
   }, []);
 
