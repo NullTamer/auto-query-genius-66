@@ -1,181 +1,129 @@
 
-import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.1.3";
+import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1";
 
-// Initialize the Gemini API with the API key
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+// Initialize the Gemini API client
+const genAI = new GoogleGenerativeAI(Deno.env.get("GEMINI_API_KEY") || "");
 
-// Function to extract keywords using Gemini AI
-export async function extractKeywordsWithGemini(text: string): Promise<{ keyword: string, frequency: number }[]> {
-  if (!GEMINI_API_KEY) {
-    console.error("GEMINI_API_KEY is not set");
-    return extractKeywordsWithFallback(text);
-  }
-
+/**
+ * Extract keywords from a job description using a fallback method when Gemini is unavailable
+ */
+export async function extractKeywordsWithFallback(jobDescription: string) {
   try {
-    console.log(`Extracting keywords from text (length: ${text.length})`);
+    console.log("Attempting to extract keywords from job description");
     
-    // Trim text if it's too long (Gemini has input limits)
-    const MAX_TEXT_LENGTH = 30000;
-    const trimmedText = text.length > MAX_TEXT_LENGTH 
-      ? text.substring(0, MAX_TEXT_LENGTH) 
-      : text;
-    
-    // Initialize the Gemini AI API
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    
-    // Get the model - use gemini-1.5-pro instead of gemini-pro
+    // First try to use Gemini
+    try {
+      return await extractKeywordsWithGemini(jobDescription);
+    } catch (geminiError) {
+      console.error("Gemini API error, using fallback method:", geminiError.message);
+      return extractKeywordsWithBasicMethod(jobDescription);
+    }
+  } catch (error) {
+    console.error("Error extracting keywords:", error);
+    throw new Error(`Failed to extract keywords: ${error.message}`);
+  }
+}
+
+/**
+ * Uses Gemini API to extract keywords from a job description
+ */
+async function extractKeywordsWithGemini(jobDescription: string) {
+  try {
+    // Use the correct model name for Gemini
+    // Important: The model name might need to be updated based on the latest Gemini API
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    
-    // Create the prompt for keyword extraction
+
+    // Prepare the prompt for keyword extraction
     const prompt = `
-    Extract the most important technical skills, technologies, job titles, and qualifications from the following job description.
-    For each keyword, provide a frequency score from 1 to 10 based on importance and repetition.
-    Format the response as a JSON array of objects with 'keyword' and 'frequency' properties.
-    Example format: [{"keyword": "JavaScript", "frequency": 8}, {"keyword": "React", "frequency": 7}]
+    Extract the most important keywords from this job description. 
+    Focus on technical skills, tools, programming languages, frameworks, methodologies, and required qualifications.
+    For each keyword, include a frequency score (1-10) based on its importance and repetition in the description.
+    Format your response as a valid JSON array with objects containing "keyword" and "frequency" properties.
+    Example: [{"keyword": "React", "frequency": 8}, {"keyword": "JavaScript", "frequency": 7}]
     
-    Job Description:
-    ${trimmedText}
-    
-    Only respond with the JSON array, no other text.
+    Here is the job description:
+    ${jobDescription}
     `;
-    
-    // Generate content with Gemini
+
+    // Generate content from Gemini
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    
-    console.log("Raw Gemini response:", text.substring(0, 200) + "...");
-    
+
     // Extract the JSON array from the response
-    try {
-      // Find JSON content within the response
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      
-      if (jsonMatch) {
-        const jsonStr = jsonMatch[0];
-        const keywords = JSON.parse(jsonStr);
-        
-        // Validate the structure
-        if (Array.isArray(keywords) && keywords.every(k => k.keyword && typeof k.frequency === 'number')) {
-          console.log(`Successfully extracted ${keywords.length} keywords with Gemini`);
-          return keywords;
-        } else {
-          console.error("Invalid keywords structure from Gemini");
-          return extractKeywordsWithFallback(trimmedText);
-        }
-      } else {
-        console.error("No JSON array found in Gemini response");
-        return extractKeywordsWithFallback(trimmedText);
-      }
-    } catch (parseError) {
-      console.error("Error parsing keywords from Gemini response:", parseError);
-      return extractKeywordsWithFallback(trimmedText);
+    const jsonMatch = text.match(/\[\s*\{.*\}\s*\]/s);
+    if (!jsonMatch) {
+      console.warn("No valid JSON found in Gemini response, using fallback method");
+      return extractKeywordsWithBasicMethod(jobDescription);
     }
+
+    const jsonStr = jsonMatch[0];
+    const keywords = JSON.parse(jsonStr);
+    console.log(`Successfully extracted ${keywords.length} keywords using Gemini`);
+    
+    return keywords;
   } catch (error) {
     console.error("Error extracting keywords with Gemini:", error);
     throw error;
   }
 }
 
-// Fallback function for keyword extraction when Gemini fails
-export function extractKeywordsWithFallback(text: string): { keyword: string, frequency: number }[] {
-  console.log("Using fallback keyword extraction method");
+/**
+ * Extracts keywords using a simple regex-based approach as fallback
+ */
+function extractKeywordsWithBasicMethod(jobDescription: string) {
+  console.log("Using basic method to extract keywords");
   
-  // List of common tech skills to look for
-  const commonSkills = [
-    "JavaScript", "TypeScript", "Python", "Java", "C#", "C++", "Ruby", "PHP", "Go", "Swift",
-    "React", "Angular", "Vue", "Next.js", "Node.js", "Express", "Django", "Flask", "Spring", "Rails",
-    "SQL", "NoSQL", "MongoDB", "PostgreSQL", "MySQL", "Redis", "AWS", "Azure", "GCP", "Docker",
-    "Kubernetes", "CI/CD", "Git", "DevOps", "Agile", "Scrum", "REST", "GraphQL", "HTML", "CSS",
-    "Tailwind", "Bootstrap", "SASS", "LESS", "Redux", "Mobx", "Jest", "Mocha", "Cypress", "Selenium",
-    "TDD", "BDD", "UI/UX", "Figma", "Sketch", "Adobe XD", "Photoshop", "Illustrator", "InDesign",
-    "Product Manager", "Project Manager", "Scrum Master", "Tech Lead", "Architect", "Engineer",
-    "Developer", "Programmer", "Analyst", "Consultant", "Designer", "Tester", "QA", "DBA", "SRE",
-    "DevSecOps", "Machine Learning", "AI", "Data Science", "Big Data", "Hadoop", "Spark", "Kafka",
-    "ETL", "Business Intelligence", "Tableau", "Power BI", "Excel", "VBA", "R", "MATLAB", "Scala"
+  // Common tech skills, languages, and frameworks to look for
+  const techTerms = [
+    "JavaScript", "TypeScript", "React", "Vue", "Angular", "Node.js", "Express", 
+    "Python", "Django", "Flask", "Java", "Spring", "C#", ".NET", "PHP", "Laravel",
+    "SQL", "MySQL", "PostgreSQL", "MongoDB", "Redis", "AWS", "Azure", "GCP",
+    "Docker", "Kubernetes", "CI/CD", "Git", "RESTful", "API", "GraphQL",
+    "HTML", "CSS", "SASS", "LESS", "Tailwind", "Bootstrap", "Material UI",
+    "React Native", "Flutter", "iOS", "Android", "Swift", "Kotlin",
+    "Data Science", "Machine Learning", "AI", "Artificial Intelligence",
+    "Agile", "Scrum", "Kanban", "DevOps", "TDD", "BDD"
   ];
   
-  // Common job titles
-  const jobTitles = [
-    "Software Engineer", "Front End Developer", "Back End Developer", "Full Stack Developer",
-    "DevOps Engineer", "Site Reliability Engineer", "Data Scientist", "Data Engineer",
-    "Machine Learning Engineer", "AI Engineer", "Cloud Architect", "Solutions Architect",
-    "Product Manager", "Project Manager", "Scrum Master", "Tech Lead", "Engineering Manager",
-    "CTO", "VP of Engineering", "Director of Engineering", "UX Designer", "UI Designer",
-    "Graphic Designer", "QA Engineer", "Test Engineer", "Business Analyst", "Systems Analyst"
-  ];
+  // Extract terms that appear in the job description
+  const foundTerms = new Map();
   
-  // Combine all search terms
-  const searchTerms = [...commonSkills, ...jobTitles];
-  
-  // Count occurrences of each term
-  const counts = new Map<string, number>();
-  
-  // Convert to lowercase for case-insensitive matching
-  const lowerText = text.toLowerCase();
-  
-  // Search for each term and count occurrences
-  searchTerms.forEach(term => {
-    // Create a regex pattern that matches the term as a whole word
-    const pattern = new RegExp(`\\b${term.toLowerCase()}\\b`, 'gi');
-    const matches = lowerText.match(pattern);
+  // Case insensitive search for each term
+  techTerms.forEach(term => {
+    const regex = new RegExp(`\\b${term.replace(/\./g, '\\.')}\\b`, 'gi');
+    const matches = jobDescription.match(regex);
     if (matches && matches.length > 0) {
-      counts.set(term, matches.length);
+      // Calculate frequency score (1-10) based on occurrence count
+      const frequency = Math.min(10, Math.max(1, Math.ceil(matches.length / 2)));
+      foundTerms.set(term, frequency);
     }
   });
   
-  // Convert to array and sort by occurrence count
-  const keywordArray = Array.from(counts.entries())
-    .map(([keyword, count]) => ({
-      keyword,
-      // Map the raw count to a frequency score between 1 and 10
-      frequency: Math.min(10, Math.max(1, Math.ceil(count * 2)))
-    }))
-    .sort((a, b) => b.frequency - a.frequency);
-  
-  // If we found keywords, return them
-  if (keywordArray.length > 0) {
-    console.log(`Extracted ${keywordArray.length} keywords with fallback method`);
-    return keywordArray;
-  }
-  
-  // If no keywords were found, provide some default keywords based on text length
-  if (text.length > 0) {
-    // Extract words from the text that might be important
-    const words = text.split(/\s+/)
-      .map(word => word.replace(/[^a-zA-Z0-9]/g, ''))
-      .filter(word => word.length > 4)  // Only consider words with 5+ characters
-      .filter(word => !['about', 'these', 'their', 'there', 'which', 'would'].includes(word.toLowerCase()));
-    
-    // Count word frequencies
-    const wordCounts = new Map<string, number>();
-    words.forEach(word => {
-      const count = wordCounts.get(word) || 0;
-      wordCounts.set(word, count + 1);
-    });
-    
-    // Get top 10 most frequent words
-    const topWords = Array.from(wordCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([word, count]) => ({
-        keyword: word,
-        frequency: Math.min(10, Math.max(1, Math.ceil(count)))
-      }));
-    
-    if (topWords.length > 0) {
-      console.log(`Extracted ${topWords.length} keywords from text analysis`);
-      return topWords;
+  // Look for additional capitalized terms that might be technologies or skills
+  const capitalizedWords = jobDescription.match(/\b[A-Z][a-zA-Z]+\b/g) || [];
+  capitalizedWords.forEach(word => {
+    if (word.length > 2 && !techTerms.includes(word)) {
+      foundTerms.set(word, 3); // Default frequency
     }
-  }
+  });
   
-  // Last resort: return some generic placeholder keywords
-  console.log("Using placeholder keywords as fallback");
-  return [
-    { keyword: "Programmer", frequency: 10 },
-    { keyword: "Developer", frequency: 8 },
-    { keyword: "Software", frequency: 7 },
-    { keyword: "Technology", frequency: 6 },
-    { keyword: "Computer", frequency: 5 }
-  ];
+  // Convert to array of objects
+  const keywords = Array.from(foundTerms).map(([keyword, frequency]) => ({
+    keyword,
+    frequency
+  }));
+  
+  console.log(`Extracted ${keywords.length} keywords using basic method`);
+  return keywords;
+}
+
+/**
+ * Extracts text from a PDF using a basic approach
+ */
+export function extractTextFromPDF(pdfArrayBuffer: ArrayBuffer): string {
+  // In a real implementation, this would use PDF.js or similar
+  // For now, return a placeholder message
+  console.log("PDF extraction requested, using placeholder text");
+  return "This is placeholder text extracted from the PDF. The actual implementation would use a PDF parsing library.";
 }

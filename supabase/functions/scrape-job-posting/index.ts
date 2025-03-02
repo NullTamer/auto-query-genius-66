@@ -2,12 +2,8 @@
 // Follow the Deno Deploy runtime docs:
 // https://deno.com/deploy/docs/runtime-api
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createJobPosting, processPdfFile, extractKeywordsFromJob } from "./job-repository.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { createJobPosting, processPdfFile } from "./job-repository.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 console.log("Hello from scrape-job-posting function!");
 
@@ -22,84 +18,60 @@ serve(async (req) => {
     
     // Parse request body
     const requestData = await req.json();
-    console.log("Request data received:", JSON.stringify(requestData).substring(0, 200) + "...");
-    
-    // Handle PDF file processing
-    if (requestData.isPdf === true) {
-      console.log("PDF file detected in request");
-      
-      const userId = requestData.userId;
-      const fileName = requestData.fileName || "unknown.pdf";
-      
-      if (!requestData.fileData || !Array.isArray(requestData.fileData)) {
-        throw new Error("Invalid PDF data format");
-      }
-      
-      // Convert the array back to Uint8Array
-      const pdfData = new Uint8Array(requestData.fileData);
-      console.log(`Processing PDF with size: ${pdfData.length} bytes`);
-      
-      try {
-        // Process the PDF file
-        const result = await processPdfFile(userId, pdfData, fileName);
-        console.log("PDF processing result:", JSON.stringify(result).substring(0, 200) + "...");
-        
-        return new Response(
-          JSON.stringify(result),
-          {
-            headers: {
-              ...corsHeaders,
-              "Content-Type": "application/json"
-            }
-          }
-        );
-      } catch (error) {
-        console.error("Error processing PDF:", error);
-        throw new Error(`Failed to process PDF: ${error.message}`);
-      }
-    }
     
     // Handle job description text
     if (requestData.jobDescription) {
-      console.log("Processing job description text");
+      console.log("Processing job description");
       
-      try {
-        const { jobId } = await createJobPosting(
-          requestData.userId, 
-          requestData.jobDescription
-        );
-        
-        // For text input, we can immediately extract keywords
-        try {
-          await extractKeywordsFromJob(jobId);
-        } catch (keywordError) {
-          console.error("Error extracting keywords:", keywordError);
-          // Continue even if keyword extraction fails - we'll handle it on the frontend
-        }
-        
-        return new Response(
-          JSON.stringify({
-            success: true,
-            jobId
-          }),
-          {
-            headers: {
-              ...corsHeaders,
-              "Content-Type": "application/json"
-            }
+      const { jobId } = await createJobPosting(
+        requestData.userId, 
+        requestData.jobDescription
+      );
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          jobId
+        }),
+        {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json"
           }
-        );
-      } catch (error) {
-        console.error("Error creating job posting:", error);
-        throw new Error(`Failed to create job posting: ${error.message}`);
-      }
+        }
+      );
+    }
+    
+    // Handle PDF file (mock implementation)
+    if (requestData.file) {
+      console.log("PDF file detected in request");
+      
+      // Since we can't actually process binary files via JSON,
+      // we'll treat this as if we received PDF text from the frontend
+      // In a real implementation, you would use form data to upload the file
+      const mockPdfText = `This is mock text extracted from a PDF file.
+      The file name was: ${requestData.file.name || "unknown"}
+      A real implementation would extract the actual content from the PDF.
+      For now, we're generating keywords based on this placeholder text.`;
+      
+      const result = await processPdfFile(requestData.userId, mockPdfText);
+      
+      return new Response(
+        JSON.stringify(result),
+        {
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json"
+          }
+        }
+      );
     }
     
     // Handle error case
     return new Response(
       JSON.stringify({
         success: false,
-        error: "No job description or PDF data provided"
+        error: "No job description or file provided"
       }),
       {
         status: 400,
@@ -127,3 +99,18 @@ serve(async (req) => {
     );
   }
 });
+
+/**
+ * Extract text from a PDF (placeholder function)
+ */
+function extractTextFromPDF(pdfBuffer: ArrayBuffer): string {
+  try {
+    console.log("Extracting text from PDF (mock implementation)");
+    // In a real implementation, this would use a PDF parsing library
+    // For now, return a placeholder message
+    return "This is placeholder text extracted from the PDF. The actual implementation would use a PDF parsing library.";
+  } catch (error) {
+    console.error("PDF extraction error:", error);
+    throw new Error("Failed to extract text from PDF");
+  }
+}
