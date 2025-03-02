@@ -1,314 +1,251 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import * as uuid from "https://deno.land/std@0.161.0/uuid/mod.ts";
 
-// Define proper CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept, cache-control',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400'
-}
-
-// Import Gemini processing function
-const generateKeywords = async (text: string) => {
-  try {
-    // Basic keywords for demo if Gemini is not available
-    const demoKeywords = [
-      { keyword: "Machine Learning", category: "Skills", weight: 1 },
-      { keyword: "Python", category: "Programming", weight: 1 },
-      { keyword: "Data Analysis", category: "Skills", weight: 1 },
-      { keyword: "SQL", category: "Programming", weight: 1 },
-      { keyword: "Communication", category: "Soft Skills", weight: 1 }
-    ];
-    
-    // Make a request to Gemini API through the scrape-job-posting function
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    
-    const { data, error } = await supabaseAdmin.functions.invoke('scrape-job-posting', {
-      body: { jobDescription: text }
-    });
-    
-    if (error || !data.keywords) {
-      console.error('Error invoking Gemini processing:', error);
-      return demoKeywords;
-    }
-    
-    return data.keywords;
-  } catch (error) {
-    console.error('Error generating keywords:', error);
-    return [];
-  }
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
-      headers: corsHeaders,
-      status: 204
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('PDF processing function called');
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Process form data for file upload
-    let formData;
-    try {
-      formData = await req.formData();
-    } catch (error) {
-      console.error('Error parsing form data:', error);
+    // Initialize Gemini API key
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY') || '';
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY is not set');
+    }
+
+    // Check if the request is multipart/form-data
+    const contentType = req.headers.get('content-type') || '';
+    if (!contentType.includes('multipart/form-data')) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Invalid form data' }),
+        JSON.stringify({ success: false, error: 'Content-Type must be multipart/form-data' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
-    
+
+    // Parse the form data
+    const formData = await req.formData();
     const pdfFile = formData.get('pdf');
     
-    if (!pdfFile) {
-      console.error('No PDF file found in request');
+    if (!pdfFile || !(pdfFile instanceof File)) {
       return new Response(
         JSON.stringify({ success: false, error: 'No PDF file uploaded' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
-    
-    console.log('PDF file received:', pdfFile.name, 'Size:', pdfFile.size);
-    
-    // Create Supabase client
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    
-    // Check if bucket exists, create if not
-    const { data: buckets } = await supabaseAdmin.storage.listBuckets();
-    if (!buckets?.find(b => b.name === 'job_pdfs')) {
-      console.log('Creating job_pdfs bucket');
-      await supabaseAdmin.storage.createBucket('job_pdfs', {
-        public: false
-      });
+
+    console.log(`Processing PDF file: ${pdfFile.name}, size: ${pdfFile.size} bytes`);
+
+    // Check file extension
+    const fileExtension = pdfFile.name.split('.').pop()?.toLowerCase();
+    if (fileExtension !== 'pdf') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'File must be a PDF' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
-    
-    // Prepare file for upload
-    const fileExt = pdfFile.name.split('.').pop()?.toLowerCase() || 'pdf';
-    const filePath = `${crypto.randomUUID()}.${fileExt}`;
-    
-    // Upload file to Supabase Storage
-    console.log('Uploading PDF to storage:', filePath);
-    const { data: storageData, error: storageError } = await supabaseAdmin.storage
-      .from('job_pdfs')
-      .upload(filePath, pdfFile, {
+
+    // Create a unique file path for the PDF
+    const pdfFileName = `${uuid.v4()}.pdf`;
+    const storagePath = `pdf_uploads/${pdfFileName}`;
+
+    // Ensure job_descriptions bucket exists
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets();
+      if (!buckets.find(bucket => bucket.name === 'job_descriptions')) {
+        await supabase.storage.createBucket('job_descriptions', {
+          public: false,
+          fileSizeLimit: 10485760, // 10MB limit
+        });
+        console.log('Created job_descriptions bucket');
+      }
+    } catch (err) {
+      console.error('Error checking/creating bucket:', err);
+    }
+
+    // Upload the PDF to Supabase Storage
+    const fileArrayBuffer = await pdfFile.arrayBuffer();
+    const { data: storageData, error: storageError } = await supabase
+      .storage
+      .from('job_descriptions')
+      .upload(storagePath, fileArrayBuffer, {
         contentType: 'application/pdf',
         upsert: false
       });
-      
+
     if (storageError) {
-      console.error('Error uploading file:', storageError);
+      console.error('Error uploading PDF to storage:', storageError);
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to upload PDF', details: storageError }),
+        JSON.stringify({ success: false, error: `Failed to upload PDF: ${storageError.message}` }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
-    
-    // Get public URL for the file
-    const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('job_pdfs')
-      .getPublicUrl(filePath);
-    
-    // Create a job posting record
-    console.log('Creating job posting record');
-    const { data: jobData, error: jobError } = await supabaseAdmin
+
+    console.log('PDF uploaded successfully to:', storagePath);
+
+    // Get a simple text extraction from the PDF
+    // This is just a basic extraction - not as good as using pdf.js
+    const decoder = new TextDecoder('utf-8');
+    let textContent = '';
+    try {
+      const pdfText = decoder.decode(new Uint8Array(fileArrayBuffer));
+      const textChunks = pdfText.match(/\(([^)]+)\)/g) || [];
+      textContent = textChunks
+        .map(chunk => chunk.slice(1, -1))
+        .filter(text => /\w/.test(text))
+        .join(' ')
+        .replace(/\\(\d{3})/g, '');
+    } catch (error) {
+      console.error('Error extracting text:', error);
+      textContent = "Text extraction failed, using Gemini to process PDF content";
+    }
+
+    // Insert into the job_postings table
+    const { data: jobPosting, error: jobPostingError } = await supabase
       .from('job_postings')
       .insert({
-        raw_text: `[PDF Document: ${pdfFile.name}]`, // Placeholder text
-        pdf_path: filePath,
-        status: 'processing'
+        description: textContent || `PDF file: ${pdfFile.name}`,
+        status: 'pending',
+        pdf_path: storagePath
       })
-      .select();
-    
-    if (jobError) {
-      console.error('Error creating job posting:', jobError);
+      .select('id')
+      .single();
+
+    if (jobPostingError) {
+      console.error('Error inserting job posting:', jobPostingError);
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to create job posting', details: jobError }),
+        JSON.stringify({ success: false, error: `Failed to create job posting: ${jobPostingError.message}` }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
+
+    const jobId = jobPosting.id;
+    console.log('Job posting created with ID:', jobId);
+
+    // Generate keywords using the Gemini API
+    console.log('Generating keywords using Gemini API...');
     
-    const jobId = jobData[0].id;
-    
-    // Process with background task
-    const processJob = async () => {
-      try {
-        console.log('Starting background processing for job ID:', jobId);
-        
-        // Download the PDF for processing
-        const { data: pdfBytes, error: downloadError } = await supabaseAdmin.storage
-          .from('job_pdfs')
-          .download(filePath);
-        
-        if (downloadError) {
-          console.error('Error downloading PDF for processing:', downloadError);
-          await updateJobStatus(supabaseAdmin, jobId, 'failed', 'Failed to download PDF for processing');
-          return;
+    // Request structure for Gemini API
+    const requestBody = {
+      contents: [
+        {
+          parts: [
+            {
+              text: `Extract all important keywords and skills from the following job description. Focus on technical skills, tools, frameworks, programming languages, and methodologies. Provide the result as a JSON array of objects, each with "keyword" and "frequency" properties. The "frequency" should be a number from 1-5 indicating how important or emphasized each keyword is in the job description:\n\n${textContent}`
+            }
+          ]
         }
-        
-        // Get text from PDF (basic extraction - just for demo)
-        const pdfText = await extractTextFromPdf(pdfBytes);
-        
-        if (!pdfText || pdfText.trim().length === 0) {
-          console.error('Failed to extract text from PDF');
-          await updateJobStatus(supabaseAdmin, jobId, 'failed', 'Failed to extract text from PDF');
-          return;
-        }
-        
-        console.log('Successfully extracted text from PDF, length:', pdfText.length);
-        
-        // Update job posting with extracted text
-        const { error: updateError } = await supabaseAdmin
-          .from('job_postings')
-          .update({ raw_text: pdfText })
-          .eq('id', jobId);
-        
-        if (updateError) {
-          console.error('Error updating job posting with extracted text:', updateError);
-          await updateJobStatus(supabaseAdmin, jobId, 'failed', 'Failed to update job posting');
-          return;
-        }
-        
-        // Generate keywords using Gemini
-        console.log('Generating keywords from PDF text');
-        try {
-          const keywords = await generateKeywords(pdfText);
-          
-          if (!keywords || keywords.length === 0) {
-            console.error('Failed to generate keywords');
-            await updateJobStatus(supabaseAdmin, jobId, 'failed', 'Failed to generate keywords');
-            return;
-          }
-          
-          console.log('Successfully generated keywords:', keywords.length);
-          
-          // Insert keywords
-          const { error: keywordError } = await supabaseAdmin
-            .from('job_keywords')
-            .insert(
-              keywords.map(keyword => ({
-                job_id: jobId,
-                keyword: keyword.keyword,
-                category: keyword.category || 'General',
-                weight: keyword.weight || 1
-              }))
-            );
-          
-          if (keywordError) {
-            console.error('Error inserting keywords:', keywordError);
-            await updateJobStatus(supabaseAdmin, jobId, 'failed', 'Failed to save keywords');
-            return;
-          }
-          
-          // Update job status to completed
-          await updateJobStatus(supabaseAdmin, jobId, 'completed');
-          console.log('Job processing completed successfully');
-        } catch (aiError) {
-          console.error('Error in AI processing:', aiError);
-          await updateJobStatus(supabaseAdmin, jobId, 'failed', 'AI processing error');
-        }
-      } catch (error) {
-        console.error('Background processing error:', error);
-        await updateJobStatus(supabaseAdmin, jobId, 'failed', 'Background processing error');
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        topP: 0.8,
+        topK: 40
       }
     };
-    
-    // Start background processing
-    EdgeRuntime.waitUntil(processJob());
-    
-    // Return immediate response with job ID
+
+    // Call the Gemini API
+    let keywords = [];
+    try {
+      const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${geminiApiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!geminiResponse.ok) {
+        throw new Error(`Gemini API error: ${geminiResponse.status}`);
+      }
+
+      const geminiData = await geminiResponse.json();
+      
+      if (!geminiData.candidates || geminiData.candidates.length === 0) {
+        throw new Error('No response from Gemini API');
+      }
+
+      const keywordsText = geminiData.candidates[0].content.parts[0].text;
+      
+      // Extract the JSON array from the response text
+      const jsonMatch = keywordsText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsedKeywords = JSON.parse(jsonMatch[0]);
+        
+        keywords = parsedKeywords.map(item => ({
+          keyword: item.keyword || '',
+          frequency: parseInt(item.frequency || '1', 10) || 1
+        })).filter(item => item.keyword.trim() !== '');
+      }
+    } catch (error) {
+      console.error('Error processing with Gemini:', error);
+      // Continue without keywords - we'll update the status to let the client know
+    }
+
+    // Insert keywords if we got them
+    if (keywords.length > 0) {
+      const keywordsToInsert = keywords.map(keyword => ({
+        job_posting_id: jobId,
+        keyword: keyword.keyword,
+        frequency: keyword.frequency
+      }));
+
+      const { error: keywordsError } = await supabase
+        .from('extracted_keywords')
+        .insert(keywordsToInsert);
+
+      if (keywordsError) {
+        console.error('Error inserting keywords:', keywordsError);
+      }
+    }
+
+    // Update the job posting status
+    const status = keywords.length > 0 ? 'processed' : 'pending';
+    const { error: updateError } = await supabase
+      .from('job_postings')
+      .update({
+        status: status,
+        processed_at: status === 'processed' ? new Date().toISOString() : null
+      })
+      .eq('id', jobId);
+
+    if (updateError) {
+      console.error('Error updating job posting status:', updateError);
+    }
+
+    console.log(`Job processing completed with status: ${status}`);
+
+    // Return the response with the job ID and keywords
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         jobId,
-        pdfPath: filePath,
         fileName: pdfFile.name,
-        keywords: [] // Empty initially - will be populated asynchronously
+        pdfPath: storagePath,
+        keywords: keywords.length > 0 ? keywords : undefined
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Unexpected error in PDF processing:', error);
+    console.error('Error processing PDF:', error);
+    
     return new Response(
-      JSON.stringify({ success: false, error: 'An unexpected error occurred', details: error.message }),
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });
-
-async function updateJobStatus(supabase, jobId, status, errorMessage = null) {
-  const updateData = { status };
-  if (errorMessage) {
-    updateData.error_message = errorMessage;
-  }
-  
-  const { error } = await supabase
-    .from('job_postings')
-    .update(updateData)
-    .eq('id', jobId);
-  
-  if (error) {
-    console.error('Failed to update job status:', error);
-  }
-}
-
-async function extractTextFromPdf(pdfBytes) {
-  try {
-    // This is a basic text extraction that works by searching for text patterns in the PDF
-    // For production use, consider implementing a more robust solution
-    const text = new TextDecoder().decode(pdfBytes);
-    
-    // Extract text content between stream markers (very basic approach)
-    let extractedText = '';
-    const regex = /BT\s*(.*?)\s*ET/gs;
-    const matches = text.matchAll(regex);
-    
-    for (const match of matches) {
-      if (match[1]) {
-        // Clean up text - remove PDF encoding artifacts
-        const cleaned = match[1]
-          .replace(/\\\(/g, '(')
-          .replace(/\\\)/g, ')')
-          .replace(/\\n/g, '\n')
-          .replace(/\\/g, '')
-          .replace(/\[|\]/g, '')
-          .replace(/\d+\.\d+\s+\d+\.\d+\s+\d+\.\d+\s+\d+\.\d+\s+\w+\s*/g, '')
-          .replace(/Tf/g, '')
-          .replace(/TJ/g, '')
-          .replace(/Tj/g, '')
-          .replace(/\(/g, '')
-          .replace(/\)/g, '')
-          .replace(/\*/g, '')
-          .replace(/</g, '')
-          .replace(/>/g, '')
-        
-        extractedText += cleaned + ' ';
-      }
-    }
-    
-    // If the basic extraction didn't yield much text, fall back to searching for readable sequences
-    if (extractedText.trim().length < 100) {
-      console.log('Basic extraction yielded insufficient text, trying fallback method');
-      // Look for consecutive ASCII text characters (very crude approach)
-      const textFragments = text.match(/[a-zA-Z0-9\s.,;:'"(){}\[\]-]{5,}/g) || [];
-      extractedText = textFragments.join(' ');
-    }
-    
-    return extractedText.trim() || 'Failed to extract readable text from PDF';
-  } catch (error) {
-    console.error('Error in PDF text extraction:', error);
-    return 'Error extracting text from PDF';
-  }
-}

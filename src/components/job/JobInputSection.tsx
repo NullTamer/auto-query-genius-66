@@ -37,6 +37,7 @@ const JobInputSection = ({
 
     try {
       setUploadedFileName(file.name);
+      toast.info(`Uploading ${file.name}...`);
       await handlePdfUpload(file);
     } catch (error) {
       console.error("Error handling file upload:", error);

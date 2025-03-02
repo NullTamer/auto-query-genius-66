@@ -3,7 +3,7 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Terminal, Upload, FileText } from "lucide-react";
+import { Terminal, Upload, FileText, X, Trash2 } from "lucide-react";
 import mammoth from "mammoth";
 import { toast } from "sonner";
 
@@ -63,6 +63,11 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
     }
   };
 
+  const handleClear = () => {
+    onChange("");
+    toast.success("Job description cleared");
+  };
+
   return (
     <Card className="cyber-card p-4 md:p-6">
       <div className="space-y-4">
@@ -93,18 +98,34 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         </div>
         
         {uploadedFileName && (
-          <div className="flex items-center gap-2 text-primary p-2 bg-primary/10 rounded-md">
-            <FileText className="h-4 w-4" />
-            <span className="text-sm truncate max-w-[300px]">File: {uploadedFileName}</span>
+          <div className="flex items-center justify-between gap-2 text-primary p-2 bg-primary/10 rounded-md">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <FileText className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm truncate max-w-[250px]">File: {uploadedFileName}</span>
+            </div>
           </div>
         )}
         
-        <Textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Paste your job description here or upload a file..."
-          className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all"
-        />
+        <div className="relative">
+          <Textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="Paste your job description here or upload a file..."
+            className="min-h-[200px] resize-none bg-background/50 border-primary/20 focus:border-primary/50 transition-all pr-10"
+          />
+          {value && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 h-7 w-7 opacity-70 hover:opacity-100"
+              onClick={handleClear}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        
         <Button
           onClick={onSubmit}
           className="w-full cyber-card bg-primary/20 hover:bg-primary/30 text-primary hover:text-primary-foreground hover:neon-glow transition-all"
