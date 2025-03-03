@@ -27,7 +27,7 @@ serve(async (req) => {
     // Extract authorization header
     const authHeader = req.headers.get('Authorization');
     
-    // Log authorization header (without the token value for security)
+    // Log authorization header presence (without the token value for security)
     console.log("Authorization header present:", !!authHeader);
     
     // Get Supabase client with admin privileges
@@ -55,7 +55,7 @@ serve(async (req) => {
         console.log("Authenticated user ID:", userId);
       }
     } else {
-      console.log("Processing as anonymous user");
+      console.log("Processing as anonymous user - no valid auth header found");
     }
 
     // Parse form data for file upload
@@ -67,6 +67,26 @@ serve(async (req) => {
     }
     
     console.log("PDF file received:", pdfFile.name, "size:", pdfFile.size);
+    
+    // Create the job_pdfs bucket if it doesn't exist
+    const { error: bucketError } = await supabaseAdmin
+      .storage
+      .createBucket('job_pdfs', {
+        public: false,
+        fileSizeLimit: 10485760, // 10MB
+      })
+      .catch(error => {
+        // If bucket already exists, ignore the error
+        if (!error.message.includes('already exists')) {
+          throw error;
+        }
+        return { error: null };
+      });
+    
+    if (bucketError) {
+      console.error("Error creating bucket:", bucketError);
+      // Continue anyway as the bucket might already exist
+    }
     
     // Store the PDF file in Supabase Storage
     const timestamp = new Date().getTime();

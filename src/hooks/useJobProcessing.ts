@@ -96,9 +96,10 @@ export const useJobProcessing = () => {
         console.log('No access token available for PDF upload, proceeding as guest');
       }
       
+      // Explicitly set Authorization header for the function invocation
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
         body: formData,
-        headers
+        headers: headers
       });
       
       if (error) {
