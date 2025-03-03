@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -33,7 +32,8 @@ const Index = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob
+    processJob,
+    handlePdfUpload: processPdfUpload
   } = useJobProcessing();
 
   const {
@@ -101,54 +101,32 @@ const Index = () => {
       resetKeywords();
       setBooleanQuery("");
       
-      const formData = new FormData();
-      formData.append('pdf', file);
+      console.log('Processing PDF upload:', file.name);
       
-      console.log('Uploading PDF file to parse-pdf edge function');
+      const result = await processPdfUpload(file);
       
-      const { data, error } = await supabase.functions.invoke('parse-pdf', {
-        body: formData,
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      
-      if (error) {
-        console.error('Error invoking edge function:', error);
-        throw error;
+      if (!result || !result.jobId) {
+        throw new Error('Failed to process PDF upload');
       }
       
-      console.log('PDF processing response:', data);
-      
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process PDF');
-      }
-      
-      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
-      setCurrentJobId(jobId);
-      setCurrentPdfPath(data.pdfPath);
       setPdfUploaded(true);
-      setLastScrapeTime(new Date().toISOString());
+      setCurrentPdfPath(result.pdfPath || null);
       
-      toast.success(`PDF "${data.fileName}" uploaded successfully`);
-      
-      if (data.keywords && data.keywords.length > 0) {
-        console.log('Using keywords directly from edge function:', data.keywords);
-        setKeywordsFromEdgeFunction(data.keywords);
-        setIsProcessing(false);
+      if (result.keywords && result.keywords.length > 0) {
+        console.log('Setting keywords from PDF processing:', result.keywords);
+        setKeywordsFromEdgeFunction(result.keywords);
       } else {
-        toast.info('PDF is being processed. Results will appear shortly...');
+        console.log('Waiting for realtime updates to fetch keywords for job ID:', result.jobId);
       }
       
-      console.log('Processing started for job ID:', jobId);
     } catch (error) {
-      console.error('Error uploading PDF:', error);
+      console.error('Error in handlePdfUpload:', error);
       toast.error('Failed to process PDF file');
       setHasError(true);
       setIsProcessing(false);
       setPdfUploaded(false);
     }
-  }, [debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [processPdfUpload, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction]);
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');

@@ -79,23 +79,41 @@ export const useJobProcessing = () => {
       setIsProcessing(true);
       setHasError(false);
       
-      console.log('Uploading PDF file to parse-pdf edge function');
+      // First, upload the PDF to the job_pdfs bucket
+      const timestamp = new Date().getTime();
+      const fileName = `${timestamp}_${file.name.replace(/[^\x00-\x7F]/g, '')}`;
       
-      const formData = new FormData();
-      formData.append('pdf', file);
+      console.log(`Uploading PDF file: ${fileName}`);
       
-      // Add authorization header if user is logged in
-      const headers: Record<string, string> = {
-        'Accept': 'application/json'
-      };
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('job_pdfs')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
       
-      if (session.data.session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.data.session.access_token}`;
+      if (uploadError) {
+        console.error('Error uploading PDF to storage:', uploadError);
+        throw new Error(`Failed to upload PDF: ${uploadError.message}`);
       }
       
+      console.log('PDF uploaded successfully:', uploadData);
+      
+      // Get the public URL for the uploaded file
+      const { data: publicUrlData } = supabase.storage
+        .from('job_pdfs')
+        .getPublicUrl(fileName);
+      
+      const pdfUrl = publicUrlData.publicUrl;
+      console.log('PDF public URL:', pdfUrl);
+      
+      // Now invoke the parse-pdf edge function
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
-        body: formData,
-        headers
+        body: { 
+          pdfUrl,
+          fileName,
+          userId: session.data.session?.user?.id
+        }
       });
       
       if (error) {
@@ -113,7 +131,7 @@ export const useJobProcessing = () => {
       setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
       
-      toast.success(`PDF "${data.fileName}" uploaded successfully`);
+      toast.success(`PDF "${file.name}" uploaded and processed successfully`);
       
       if (data.keywords && data.keywords.length > 0) {
         console.log('Keywords found in PDF:', data.keywords);
