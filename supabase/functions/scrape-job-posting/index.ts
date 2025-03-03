@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -106,165 +105,8 @@ async function extractKeywordsWithGemini(text: string, apiKey: string): Promise<
   }
 }
 
-// Main serve function for the edge function
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
-  
-  try {
-    // Parse request body
-    const requestData = await req.json()
-    const { jobDescription, jobPostingId } = requestData
-    
-    if (!jobDescription) {
-      return new Response(
-        JSON.stringify({ error: 'Job description is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    
-    console.log("Processing job posting:", jobPostingId ? `ID: ${jobPostingId}` : "New job")
-    console.log("Job description length:", jobDescription.length)
-    
-    // Get API key from environment
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Gemini API key not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    
-    // Extract keywords using Gemini API
-    const keywords = await retryWithBackoff(async () => {
-      return await extractKeywordsWithGemini(jobDescription, apiKey)
-    })
-    
-    console.log(`Extracted ${keywords.length} keywords:`, keywords)
-    
-    // Create database client for Supabase
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    
-    const supabase = createSupabaseClient(supabaseUrl, supabaseKey)
-    
-    let finalJobId = jobPostingId
-    
-    // If no job posting ID was provided, create a new job posting
-    if (!finalJobId) {
-      // Get or create a default job source
-      const { data: sources, error: sourcesError } = await supabase
-        .from('job_sources')
-        .select('*')
-        .limit(1)
-      
-      if (sourcesError) {
-        throw new Error(`Error fetching job sources: ${sourcesError.message}`)
-      }
-      
-      let sourceId
-      if (sources?.length) {
-        sourceId = sources[0].id
-      } else {
-        const { data: newSource, error: createError } = await supabase
-          .from('job_sources')
-          .insert({
-            source_name: 'default',
-            is_public: true
-          })
-          .select()
-          .single()
-        
-        if (createError) {
-          throw new Error(`Error creating job source: ${createError.message}`)
-        }
-        
-        sourceId = newSource.id
-      }
-      
-      // Create a new job posting
-      const { data: jobPosting, error: jobError } = await supabase
-        .from('job_postings')
-        .insert({
-          source_id: sourceId,
-          title: 'Extracted from Description',
-          description: jobDescription,
-          posting_url: 'direct-input',
-          status: 'pending',
-          is_public: true
-        })
-        .select()
-        .single()
-      
-      if (jobError) {
-        throw new Error(`Error creating job posting: ${jobError.message}`)
-      }
-      
-      finalJobId = jobPosting.id
-    }
-    
-    // Insert extracted keywords into the database
-    const keywordInserts = keywords.map(k => ({
-      job_posting_id: finalJobId,
-      keyword: k.keyword,
-      frequency: k.frequency,
-      is_public: true
-    }))
-    
-    const { error: insertError } = await supabase
-      .from('extracted_keywords')
-      .insert(keywordInserts)
-    
-    if (insertError) {
-      throw new Error(`Error inserting keywords: ${insertError.message}`)
-    }
-    
-    // Update job status to processed
-    const { error: updateError } = await supabase
-      .from('job_postings')
-      .update({
-        status: 'processed',
-        processed_at: new Date().toISOString()
-      })
-      .eq('id', finalJobId)
-    
-    if (updateError) {
-      throw new Error(`Error updating job status: ${updateError.message}`)
-    }
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        jobId: finalJobId,
-        keywords: keywords,
-        message: 'Job posting processed successfully'
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
-    
-  } catch (error) {
-    console.error('Error processing job posting:', error)
-    
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
-  }
-})
-
 // Helper function to create a Supabase client
-function createSupabaseClient(supabaseUrl: string, serviceRoleKey: string) {
+function createClient(supabaseUrl: string, serviceRoleKey: string) {
   return {
     from: (table: string) => ({
       select: (columns = '*') => ({
@@ -404,3 +246,179 @@ function createSupabaseClient(supabaseUrl: string, serviceRoleKey: string) {
     })
   }
 }
+
+// Main serve function for the edge function
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    console.log('Received job processing request');
+    const body = await req.json();
+    
+    // We can now receive either a jobDescription directly or a jobId reference
+    const { jobDescription, jobId, userId } = body;
+    
+    // Initialize variables to track our processing
+    let jobPostingId = jobId;
+    let description = jobDescription;
+    
+    // Create a Supabase client with the service role key for admin access
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    // If we received a jobId but no description, fetch the description from the database
+    if (jobPostingId && !description) {
+      console.log(`Fetching job description for ID: ${jobPostingId}`);
+      const { data: jobData, error: jobError } = await supabaseAdmin
+        .from('job_postings')
+        .select('description, content')
+        .eq('id', jobPostingId)
+        .single();
+        
+      if (jobError) {
+        console.error('Error fetching job posting:', jobError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Job posting not found' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+      
+      // Use content if available, fall back to description
+      description = jobData.content || jobData.description;
+      
+      if (!description) {
+        console.error('Job posting has no content or description');
+        return new Response(
+          JSON.stringify({ success: false, error: 'Job posting has no content' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+    }
+    
+    // If we have no description at this point, it's an error
+    if (!description) {
+      console.error('No job description provided');
+      return new Response(
+        JSON.stringify({ success: false, error: 'No job description provided' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
+    // If we don't have a job posting ID yet, create one
+    if (!jobPostingId) {
+      console.log('Creating new job posting record');
+      const { data: newJob, error: createError } = await supabaseAdmin
+        .from('job_postings')
+        .insert([
+          {
+            description,
+            content: description,
+            status: 'pending',
+            user_id: userId,
+            is_public: true,
+            created_at: new Date().toISOString(),
+          },
+        ])
+        .select('id')
+        .single();
+        
+      if (createError) {
+        console.error('Error creating job posting:', createError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to create job posting' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+      
+      jobPostingId = newJob.id;
+      console.log(`Created job posting with ID: ${jobPostingId}`);
+    }
+    
+    // Extract keywords from the job description
+    console.log('Extracting keywords from job description');
+    let keywords;
+    try {
+      keywords = await retryWithBackoff(async () => {
+        return await extractKeywordsWithGemini(description, Deno.env.get('GEMINI_API_KEY')!)
+      });
+      
+      console.log(`Extracted ${keywords.length} keywords`);
+      
+      // Store the extracted keywords
+      if (keywords && keywords.length > 0) {
+        const keywordRows = keywords.map(kw => ({
+          job_posting_id: jobPostingId,
+          keyword: kw.keyword,
+          frequency: kw.frequency || 1,
+          is_public: true,
+          user_id: userId
+        }));
+        
+        console.log(`Storing ${keywordRows.length} keywords`);
+        const { error: keywordError } = await supabaseAdmin
+          .from('extracted_keywords')
+          .insert(keywordRows);
+          
+        if (keywordError) {
+          console.error('Error storing keywords:', keywordError);
+          // Continue processing even if keyword storage fails
+        }
+      }
+      
+      // Update the job posting status to 'processed'
+      console.log(`Updating job posting ${jobPostingId} status to 'processed'`);
+      const { error: updateError } = await supabaseAdmin
+        .from('job_postings')
+        .update({ 
+          status: 'processed',
+          processed_at: new Date().toISOString()
+        })
+        .eq('id', jobPostingId);
+        
+      if (updateError) {
+        console.error('Error updating job status:', updateError);
+        // Continue processing even if status update fails
+      }
+      
+      // Return success response with job ID and keywords
+      return new Response(
+        JSON.stringify({
+          success: true,
+          jobId: jobPostingId,
+          keywords,
+          message: 'Job processed successfully'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+      
+    } catch (error) {
+      console.error('Error processing job:', error);
+      
+      // Update the job posting status to 'failed'
+      try {
+        await supabaseAdmin
+          .from('job_postings')
+          .update({ status: 'failed' })
+          .eq('id', jobPostingId);
+      } catch (updateError) {
+        console.error('Error updating job status to failed:', updateError);
+      }
+      
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to process job description' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return new Response(
+      JSON.stringify({ success: false, error: 'An unexpected error occurred' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+})

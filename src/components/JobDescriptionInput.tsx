@@ -50,7 +50,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         };
         reader.readAsText(file);
       } else if (fileExtension === 'pdf') {
-        // For PDF files, we need to upload to the server for processing
+        // For PDF files, we upload to the server for processing
         if (onFileUpload) {
           try {
             toast.info("Uploading PDF for processing...");
@@ -116,6 +116,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
               accept=".txt,.doc,.docx,.pdf"
               className="hidden"
               onChange={handleFileUpload}
+              disabled={isProcessing}
             />
           </div>
         </div>
@@ -152,7 +153,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         <Button
           onClick={onSubmit}
           className="w-full cyber-card bg-primary/20 hover:bg-primary/30 text-primary hover:text-primary-foreground hover:neon-glow transition-all"
-          disabled={!value.trim() && !isProcessing}
+          disabled={!value.trim() || isProcessing}
         >
           {isProcessing ? "Processing..." : "Generate Boolean Query"}
         </Button>

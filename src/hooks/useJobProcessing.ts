@@ -65,6 +65,80 @@ export const useJobProcessing = () => {
     }
   }, []);
 
+  const handlePdfUpload = useCallback(async (file: File) => {
+    if (processingRef.current) {
+      console.log('Already processing a job, skipping');
+      return null;
+    }
+    
+    try {
+      const session = await supabase.auth.getSession();
+      console.log('Current session for PDF upload:', session);
+      
+      processingRef.current = true;
+      setIsProcessing(true);
+      setHasError(false);
+      
+      console.log('Uploading PDF file to parse-pdf edge function');
+      
+      const formData = new FormData();
+      formData.append('pdf', file);
+      
+      // Add authorization header if user is logged in
+      const headers: Record<string, string> = {
+        'Accept': 'application/json'
+      };
+      
+      if (session.data.session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.data.session.access_token}`;
+      }
+      
+      const { data, error } = await supabase.functions.invoke('parse-pdf', {
+        body: formData,
+        headers
+      });
+      
+      if (error) {
+        console.error('Error invoking parse-pdf edge function:', error);
+        throw error;
+      }
+      
+      console.log('PDF processing response:', data);
+      
+      if (!data.success || !data.jobId) {
+        throw new Error(data.error || 'Failed to process PDF');
+      }
+      
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+      setCurrentJobId(jobId);
+      setLastScrapeTime(new Date().toISOString());
+      
+      toast.success(`PDF "${data.fileName}" uploaded successfully`);
+      
+      if (data.keywords && data.keywords.length > 0) {
+        console.log('Keywords found in PDF:', data.keywords);
+        // The caller should handle setting keywords if needed
+      } else {
+        toast.info('PDF is being processed. Results will appear shortly...');
+      }
+      
+      return { 
+        jobId, 
+        keywords: data.keywords || [],
+        pdfPath: data.pdfPath
+      };
+      
+    } catch (error) {
+      console.error('Error uploading PDF:', error);
+      toast.error('Failed to process PDF file');
+      setHasError(true);
+      throw error;
+    } finally {
+      processingRef.current = false;
+      setIsProcessing(false);
+    }
+  }, []);
+
   return {
     isProcessing,
     setIsProcessing,
@@ -74,6 +148,7 @@ export const useJobProcessing = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob
+    processJob,
+    handlePdfUpload
   };
 };
