@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -15,27 +16,29 @@ export const useJobProcessing = () => {
       return null;
     }
 
+    if (!jobDescription || jobDescription.trim() === '') {
+      console.log('Empty job description, skipping');
+      toast.error('Please enter a job description');
+      return null;
+    }
+
     try {
+      const session = await supabase.auth.getSession();
+      console.log('Current session:', session);
+
       processingRef.current = true;
       setIsProcessing(true);
       setHasError(false);
       
       console.log('Invoking edge function to process job description');
       
-      // Get authentication token if available
-      const { data: sessionData } = await supabase.auth.getSession();
-      const authHeader = sessionData.session ? 
-        { 'Authorization': `Bearer ${sessionData.session.access_token}` } : {};
-      
-      // Invoke the edge function with is_public set to true for anonymous access
+      // Invoke the edge function with the job description text
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription,
-          is_public: true // Set this to true for anonymous access
-        },
-        headers: {
-          ...authHeader,
-          'Content-Type': 'application/json'
+          isPdf: false,
+          // Pass the user ID if available, otherwise proceed as guest
+          userId: session.data.session?.user?.id
         }
       });
       
@@ -46,119 +49,103 @@ export const useJobProcessing = () => {
       
       console.log('Edge function response:', data);
       
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process job posting');
+      if (!data || !data.success || !data.jobId) {
+        throw new Error(data?.error || 'Failed to process job posting');
       }
       
       const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
-      toast.success('Job processing completed');
-      console.log('Processing completed for job ID:', jobId);
-      
-      // If keywords were returned directly from the edge function, handle them
-      if (data.keywords && data.keywords.length > 0) {
-        console.log('Keywords directly from edge function:', data.keywords);
-      }
-      
+      toast.success('Job processing initiated');
+      console.log('Processing initiated for job ID:', jobId);
       return jobId;
 
     } catch (error) {
       console.error('Error processing job:', error);
       toast.error('Failed to process job posting');
       setHasError(true);
-      setIsProcessing(false); // Important: Clear processing state on error
       return null;
     } finally {
       processingRef.current = false;
-      setIsProcessing(false); // Ensure processing state is cleared in all cases
+      // Note: We don't set isProcessing to false here because we want to 
+      // wait for the realtime updates to indicate completion
     }
   }, []);
 
-  // Add PDF upload functionality
-  const uploadPdf = useCallback(async (file: File): Promise<number | null> => {
+  // Add a new function to process PDFs
+  const processPdf = useCallback(async (file: File) => {
     if (processingRef.current) {
       console.log('Already processing a job, skipping');
       return null;
     }
 
     try {
+      const session = await supabase.auth.getSession();
+      console.log('Current session for PDF processing:', session);
+
       processingRef.current = true;
       setIsProcessing(true);
       setHasError(false);
-
-      // Generate a unique filename for the PDF
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
-      const filePath = `uploads/${fileName}`;
-
-      console.log('Uploading PDF file to storage:', filePath);
-
-      // Upload the file to Supabase Storage using anonymous access
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('job_pdfs')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Error uploading PDF:', uploadError);
-        throw uploadError;
-      }
-
-      const { path } = uploadData;
-      console.log('PDF uploaded successfully to path:', path);
-      toast.success('PDF uploaded, processing content...');
-
-      // Get public URL for the uploaded file
-      const { data: publicUrlData } = supabase.storage
-        .from('job_pdfs')
-        .getPublicUrl(filePath);
-
-      console.log('Public URL:', publicUrlData.publicUrl);
-
-      // Process the PDF using the edge function with anonymous access
-      const { data: processData, error: processError } = await supabase.functions.invoke('parse-pdf', {
+      
+      console.log(`Processing PDF: ${file.name} (${file.size} bytes)`);
+      
+      // Read the file as ArrayBuffer
+      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const fileReader = new FileReader();
+        fileReader.onload = () => {
+          if (fileReader.result instanceof ArrayBuffer) {
+            resolve(fileReader.result);
+          } else {
+            reject(new Error('FileReader did not return an ArrayBuffer'));
+          }
+        };
+        fileReader.onerror = () => reject(new Error('Failed to read PDF file'));
+        fileReader.readAsArrayBuffer(file);
+      });
+      
+      console.log('PDF file read as ArrayBuffer, sending to edge function...');
+      
+      // Convert ArrayBuffer to Uint8Array for transmission
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Invoke the edge function with the PDF content
+      const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
-          pdfUrl: publicUrlData.publicUrl,
-          is_public: true
-        },
-        headers: {
-          'Content-Type': 'application/json'
+          isPdf: true,
+          fileName: file.name,
+          fileData: Array.from(uint8Array), // Convert to regular array for JSON serialization
+          userId: session.data.session?.user?.id
         }
       });
-
-      if (processError) {
-        console.error('Error processing PDF:', processError);
-        throw processError;
+      
+      if (error) {
+        console.error('Error invoking edge function:', error);
+        throw new Error('Failed to process PDF: ' + error.message);
       }
-
-      console.log('PDF processing response:', processData);
-
-      if (!processData.success || !processData.jobId) {
-        throw new Error(processData.error || 'Failed to process PDF');
+      
+      console.log('Edge function response for PDF:', data);
+      
+      if (!data || !data.success || !data.jobId) {
+        throw new Error(data?.error || 'Failed to process PDF');
       }
-
-      const jobId = typeof processData.jobId === 'string' ? parseInt(processData.jobId, 10) : processData.jobId;
+      
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
       setCurrentJobId(jobId);
       setLastScrapeTime(new Date().toISOString());
-      toast.success('PDF processed successfully');
       
-      // If keywords were returned directly, handle them
-      if (processData.keywords && processData.keywords.length > 0) {
-        console.log('Keywords directly from PDF processing:', processData.keywords);
-      }
+      return {
+        jobId,
+        extractedText: data.extractedText || `[PDF Content: ${file.name}]`,
+        keywords: data.keywords || []
+      };
       
-      return jobId;
     } catch (error) {
       console.error('Error processing PDF:', error);
-      toast.error('Failed to process PDF');
       setHasError(true);
-      return null;
+      throw error;
     } finally {
       processingRef.current = false;
-      setIsProcessing(false);
+      // We don't set isProcessing to false here - we wait for realtime updates
     }
   }, []);
 
@@ -172,6 +159,6 @@ export const useJobProcessing = () => {
     currentJobId,
     setCurrentJobId,
     processJob,
-    uploadPdf
+    processPdf
   };
 };

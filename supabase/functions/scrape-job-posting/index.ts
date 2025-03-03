@@ -1,132 +1,104 @@
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Follow the Deno Deploy runtime docs:
+// https://deno.com/deploy/docs/runtime-api
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createJobPosting, processPdfFile, extractKeywordsFromJob } from "./job-repository.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
-// CORS headers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+console.log("Hello from scrape-job-posting function!");
 
 serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Initialize Supabase client with service role key for admin operations
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    console.log("Processing request to scrape-job-posting");
     
-    // Create client with anonymous key for storage operations
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    // Create admin client with service role key for DB operations
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
     // Parse request body
-    const { jobDescription, pdfUrl, is_public = false } = await req.json();
-
-    if (!jobDescription && !pdfUrl) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "No job description or PDF URL provided" 
-        }),
-        { 
-          status: 400, 
-          headers: { 
-            ...corsHeaders,
-            "Content-Type": "application/json" 
-          } 
-        }
-      );
-    }
-
-    // Source of the job description
-    const source = pdfUrl ? 'pdf' : 'text';
-    console.log(`Processing job description from ${source}`);
-
-    // Content to process
-    const contentToProcess = jobDescription || "";
-
-    // Create a job posting entry
-    const { data: jobPosting, error: jobError } = await supabaseAdmin
-      .from('job_postings')
-      .insert([
-        { 
-          content: contentToProcess,
-          pdf_path: pdfUrl || null,
-          is_public: true, // Always make it public for anonymous access
-          status: 'processed',
-          processed_at: new Date().toISOString()
-        }
-      ])
-      .select()
-      .single();
-
-    if (jobError) {
-      console.error("Error storing job posting:", jobError);
-      throw jobError;
-    }
-
-    console.log("Job posting stored with ID:", jobPosting.id);
-
-    // Generate keywords based on the job description
-    // In a real implementation, you'd use NLP or an AI service
-    const keywordExtractor = (text: string) => {
-      // Simple mock implementation - extract words and count frequencies
-      const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-      const wordCount: Record<string, number> = {};
+    const requestData = await req.json();
+    console.log("Request data received:", JSON.stringify(requestData).substring(0, 200) + "...");
+    
+    // Handle PDF file processing
+    if (requestData.isPdf === true) {
+      console.log("PDF file detected in request");
       
-      words.forEach(word => {
-        if (word.length > 3) { // Only consider words with more than 3 characters
-          wordCount[word] = (wordCount[word] || 0) + 1;
-        }
-      });
+      const userId = requestData.userId;
+      const fileName = requestData.fileName || "unknown.pdf";
       
-      // Convert to array and sort by frequency
-      return Object.entries(wordCount)
-        .filter(([word]) => !['and', 'the', 'for', 'with', 'that', 'this'].includes(word))
-        .map(([keyword, frequency]) => ({ keyword, frequency }))
-        .sort((a, b) => b.frequency - a.frequency)
-        .slice(0, 20); // Take top 20 keywords
-    };
-
-    const extractedKeywords = keywordExtractor(contentToProcess);
-
-    // Store the keywords
-    if (extractedKeywords.length > 0) {
-      const { error: keywordsError } = await supabaseAdmin
-        .from('extracted_keywords')
-        .insert(
-          extractedKeywords.map(k => ({
-            job_posting_id: jobPosting.id,
-            keyword: k.keyword,
-            frequency: k.frequency,
-            is_public: true // Always make keywords public for anonymous access
-          }))
-        );
-
-      if (keywordsError) {
-        console.error("Error storing keywords:", keywordsError);
-        throw keywordsError;
+      if (!requestData.fileData || !Array.isArray(requestData.fileData)) {
+        throw new Error("Invalid PDF data format");
       }
-
-      console.log("Keywords stored successfully");
+      
+      // Convert the array back to Uint8Array
+      const pdfData = new Uint8Array(requestData.fileData);
+      console.log(`Processing PDF with size: ${pdfData.length} bytes`);
+      
+      try {
+        // Process the PDF file
+        const result = await processPdfFile(userId, pdfData, fileName);
+        console.log("PDF processing result:", JSON.stringify(result).substring(0, 200) + "...");
+        
+        return new Response(
+          JSON.stringify(result),
+          {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      } catch (error) {
+        console.error("Error processing PDF:", error);
+        throw new Error(`Failed to process PDF: ${error.message}`);
+      }
     }
-
-    // Return the response
+    
+    // Handle job description text
+    if (requestData.jobDescription) {
+      console.log("Processing job description text");
+      
+      try {
+        const { jobId } = await createJobPosting(
+          requestData.userId, 
+          requestData.jobDescription
+        );
+        
+        // For text input, we can immediately extract keywords
+        try {
+          await extractKeywordsFromJob(jobId);
+        } catch (keywordError) {
+          console.error("Error extracting keywords:", keywordError);
+          // Continue even if keyword extraction fails - we'll handle it on the frontend
+        }
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            jobId
+          }),
+          {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      } catch (error) {
+        console.error("Error creating job posting:", error);
+        throw new Error(`Failed to create job posting: ${error.message}`);
+      }
+    }
+    
+    // Handle error case
     return new Response(
       JSON.stringify({
-        success: true,
-        jobId: jobPosting.id,
-        keywords: extractedKeywords,
-        source: source
+        success: false,
+        error: "No job description or PDF data provided"
       }),
       {
-        status: 200,
+        status: 400,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json"
@@ -134,12 +106,12 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Error processing job posting:", error);
+    console.error("Error in scrape-job-posting function:", error);
     
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message
+        error: error.message || "An error occurred while processing the job posting"
       }),
       {
         status: 500,

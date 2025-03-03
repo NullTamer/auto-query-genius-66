@@ -43,8 +43,8 @@ export const useRealtimeUpdates = ({
               console.log('Job processed, triggering callback');
               onProcessed(currentJobId, newData.processed_at);
             } else if (newData.status === 'failed') {
-              console.log('Job failed, triggering callback');
-              onFailed(newData.description);
+              console.log('Job failed, triggering callback with description:', newData.description);
+              onFailed(newData.description || 'Unknown error occurred');
             }
           }
         )

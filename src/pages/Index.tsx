@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -13,16 +12,15 @@ import PageHeader from "@/components/layout/PageHeader";
 import JobInputSection from "@/components/job/JobInputSection";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
+import CounterModule from "@/components/CounterModule";
 import StatisticsModule from "@/components/StatisticsModule";
-import JobSearchModule from "@/components/JobSearchModule";
 
 const Index = () => {
   const [jobDescription, setJobDescription] = useState("");
   const [booleanQuery, setBooleanQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [session, setSession] = useState<any>(null);
-  const [pdfUploaded, setPdfUploaded] = useState(false);
-  const [currentPdfPath, setCurrentPdfPath] = useState<string | null>(null);
+  const [isPdfUploading, setIsPdfUploading] = useState(false);
 
   const {
     isProcessing,
@@ -34,7 +32,7 @@ const Index = () => {
     currentJobId,
     setCurrentJobId,
     processJob,
-    uploadPdf
+    processPdf
   } = useJobProcessing();
 
   const {
@@ -68,7 +66,6 @@ const Index = () => {
       await debouncedFetchKeywords(jobId);
       setLastScrapeTime(processedAt);
       setIsProcessing(false);
-      setPdfUploaded(false); 
     } catch (error) {
       console.error('Error handling processed job:', error);
       toast.error('Failed to fetch keywords');
@@ -81,9 +78,10 @@ const Index = () => {
     setHasError(true);
     setIsProcessing(false);
     resetKeywords();
-    setPdfUploaded(false);
     if (description) {
       toast.error(`Processing failed: ${description}`);
+    } else {
+      toast.error('Processing failed for unknown reason');
     }
   }, [setHasError, setIsProcessing, resetKeywords]);
 
@@ -93,112 +91,70 @@ const Index = () => {
     onFailed: handleFailed
   });
 
-  const handlePdfUpload = useCallback(async (file: File) => {
-    if (!file) return;
-    
+  const handlePdfUpload = async (file: File) => {
     try {
-      setIsProcessing(true);
-      setPdfUploaded(false);
       resetKeywords();
       setBooleanQuery("");
+      setIsPdfUploading(true);
+      setHasError(false);
       
-      console.log('Calling uploadPdf with file:', file.name);
-      const jobId = await uploadPdf(file);
+      console.log(`Starting PDF upload for: ${file.name} (${file.size} bytes)`);
       
-      if (!jobId) {
-        throw new Error('Failed to process PDF');
+      const result = await processPdf(file);
+      
+      if (!result) {
+        throw new Error('Failed to process PDF - no result returned');
       }
       
-      // Fetch the job posting data to get the extracted text
-      const { data: jobData, error: jobError } = await supabase
-        .from('job_postings')
-        .select('content, description')
-        .eq('id', jobId)
-        .eq('is_public', true)
-        .single();
+      // Update the job description with the extracted text
+      setJobDescription(result.extractedText);
       
-      if (jobError) {
-        console.error('Error fetching job data:', jobError);
-      } else if (jobData) {
-        console.log('Job data fetched:', jobData);
-        // Set the extracted text as job description
-        if (jobData.content) {
-          console.log('Setting content from job data to job description');
-          setJobDescription(jobData.content);
-        } else if (jobData.description) {
-          console.log('Setting description from job data to job description');
-          setJobDescription(jobData.description);
-        }
+      // If we got keywords directly, use them
+      if (result.keywords && result.keywords.length > 0) {
+        console.log('Setting keywords from PDF processing result:', result.keywords);
+        setKeywordsFromEdgeFunction(result.keywords);
+        setIsPdfUploading(false);
+        toast.success('PDF processed successfully');
+      } else {
+        console.log('No keywords in PDF result, awaiting realtime updates');
+        toast.success('PDF uploaded, processing content...');
       }
       
-      console.log('PDF processing completed for job ID:', jobId);
-      debouncedFetchKeywords(jobId);
-      setPdfUploaded(true);
     } catch (error) {
-      console.error('Error uploading PDF:', error);
-      toast.error('Failed to process PDF file');
+      console.error('Error handling PDF upload:', error);
+      toast.error('Failed to process PDF. Please try using the text input instead.');
       setHasError(true);
-      setIsProcessing(false);
-      setPdfUploaded(false);
+      setIsPdfUploading(false);
     }
-  }, [resetKeywords, uploadPdf, debouncedFetchKeywords, setIsProcessing, setHasError]);
+  };
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
+    
+    if (!jobDescription || jobDescription.trim() === '') {
+      toast.error('Please enter a job description');
+      return;
+    }
+    
     resetKeywords();
     setBooleanQuery("");
-    setPdfUploaded(false);
-    setIsProcessing(true);
+    setHasError(false);
     
     try {
-      const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
-        body: { 
-          jobDescription,
-          is_public: true
-        },
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      const jobId = await processJob(jobDescription);
       
-      if (error) {
-        console.error('Error invoking edge function:', error);
-        setIsProcessing(false);
-        setHasError(true);
-        toast.error('Failed to process job posting');
+      if (!jobId) {
+        toast.error('Failed to start job processing');
         return;
       }
       
-      console.log('Edge function response:', data);
-      
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process job posting');
-      }
-      
-      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
-      setCurrentJobId(jobId);
-      setLastScrapeTime(new Date().toISOString());
-      
-      if (data.keywords && data.keywords.length > 0) {
-        console.log('Using keywords directly from edge function:', data.keywords);
-        setKeywordsFromEdgeFunction(data.keywords);
-        setIsProcessing(false);
-        toast.success('Job processing completed');
-      } else {
-        console.log('No keywords in response, fetching from database...');
-        await debouncedFetchKeywords(jobId);
-        setIsProcessing(false);
-        toast.success('Job processing completed');
-      }
-      
-      console.log('Processing completed for job ID:', jobId);
+      console.log(`Job processing started for ID: ${jobId}`);
     } catch (error) {
       console.error('Error in handleGenerateQuery:', error);
-      setIsProcessing(false);
       setHasError(true);
       toast.error('Failed to process job description');
     }
-  }, [jobDescription, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [jobDescription, processJob, resetKeywords, setHasError]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
@@ -233,14 +189,13 @@ const Index = () => {
           <JobInputSection 
             jobDescription={jobDescription}
             setJobDescription={setJobDescription}
-            isProcessing={isProcessing}
+            isProcessing={isProcessing || isPdfUploading}
             hasError={hasError}
             currentJobId={currentJobId}
             handleGenerateQuery={handleGenerateQuery}
-            handlePdfUpload={handlePdfUpload}
             handleRefresh={handleRefresh}
             isRefreshing={isRefreshing}
-            pdfUploaded={pdfUploaded}
+            handleFileUpload={handlePdfUpload}
           />
           <div className="space-y-6">
             <KeywordDisplay
@@ -253,7 +208,9 @@ const Index = () => {
 
         <QueryPreview query={booleanQuery} />
         
-        {booleanQuery && <JobSearchModule query={booleanQuery} session={session} />}
+        <div className="my-8">
+          <CounterModule className="max-w-md mx-auto" />
+        </div>
       </div>
     </div>
   );
