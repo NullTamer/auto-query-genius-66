@@ -16,6 +16,7 @@ interface JobInputSectionProps {
   handleRefresh: () => void;
   isRefreshing: boolean;
   pdfUploaded: boolean;
+  uploadedFileName?: string | null;
 }
 
 const JobInputSection = ({
@@ -28,9 +29,9 @@ const JobInputSection = ({
   handlePdfUpload,
   handleRefresh,
   isRefreshing,
-  pdfUploaded
+  pdfUploaded,
+  uploadedFileName
 }: JobInputSectionProps) => {
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleFileSelect = async (file: File) => {
@@ -38,11 +39,9 @@ const JobInputSection = ({
 
     try {
       setUploadError(null);
-      setUploadedFileName(file.name);
       await handlePdfUpload(file);
     } catch (error) {
       console.error("Error handling file upload:", error);
-      setUploadedFileName(null);
       setUploadError("Failed to process PDF file. Please try a different file or paste the job description manually.");
       toast.error("Failed to process PDF file");
     }
