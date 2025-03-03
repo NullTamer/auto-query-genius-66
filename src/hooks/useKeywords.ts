@@ -62,10 +62,12 @@ export const useKeywords = () => {
       console.log('Fetching keywords for job ID:', jobId);
       
       // Only select columns that exist in the database
+      // Add is_public=true filter to ensure we only get public keywords
       const { data: keywordsData, error } = await supabase
         .from('extracted_keywords')
         .select('keyword, frequency')
         .eq('job_posting_id', jobId)
+        .eq('is_public', true)
         .order('frequency', { ascending: false });
 
       if (error) {

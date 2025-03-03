@@ -39,7 +39,16 @@ const JobInputSection = ({
     try {
       setUploadError(null);
       setUploadedFileName(file.name);
+      
+      // Process the PDF file
       await handlePdfUpload(file);
+      
+      // Clear any previous job description text since we're now using a PDF
+      if (jobDescription) {
+        setJobDescription("");
+      }
+      
+      toast.success(`File ${file.name} uploaded and being processed`);
     } catch (error) {
       console.error("Error handling file upload:", error);
       setUploadedFileName(null);

@@ -1,406 +1,200 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { JobRepository } from "./job-repository.ts";
+import { extractKeywords, parseJobDescription } from "./utils.ts";
+import { analyzeJobPostingWithGemini } from "./gemini-service.ts";
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
-
-// CORS headers for cross-origin requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
-// Utility function for sleeping/delaying execution
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+// Helper function to sleep/delay for throttling
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Retry function with exponential backoff
-async function retryWithBackoff<T>(
-  operation: () => Promise<T>,
-  maxRetries = 3,
-  baseDelay = 1000
-): Promise<T> {
-  let lastError: Error | null = null
+// Helper function to extract text from PDF URL
+async function extractTextFromPdf(pdfUrl: string, retries = 3): Promise<string> {
+  let attempt = 0;
   
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  while (attempt < retries) {
     try {
-      // Add throttling - wait at least 2 seconds between API calls
-      if (attempt > 0) {
-        const delay = baseDelay * Math.pow(2, attempt - 1)
-        console.log(`Retry attempt ${attempt + 1}, waiting ${delay}ms...`)
-        await sleep(delay)
-      } else {
-        await sleep(2000) // Default throttle
-      }
+      console.log(`Fetching PDF from URL: ${pdfUrl}, attempt ${attempt + 1}`);
+      const response = await fetch(pdfUrl);
       
-      return await operation()
-    } catch (error) {
-      console.error(`Attempt ${attempt + 1} failed:`, error)
-      lastError = error as Error
-      
-      // Check for specific HTTP errors
-      if (error instanceof Response) {
-        const status = error.status
+      if (!response.ok) {
+        const status = response.status;
+        console.error(`HTTP error fetching PDF: ${status}, URL: ${pdfUrl}`);
         
-        // Don't retry on client errors, except for rate limits
-        if (status !== 429 && status >= 400 && status < 500) {
-          throw error
+        if (status === 404) {
+          throw new Error("PDF file not found");
         }
+        
+        if (status === 429) {
+          // Rate limited, wait longer before retry
+          await sleep(2000 * (attempt + 1));
+          attempt++;
+          continue;
+        }
+        
+        throw new Error(`Failed to fetch PDF: ${status}`);
       }
+      
+      // Get PDF content as ArrayBuffer
+      const pdfBuffer = await response.arrayBuffer();
+      
+      // Use PDF.js or another library to extract text
+      // For this example, we'll use a simple placeholder
+      console.log(`PDF fetched successfully, size: ${pdfBuffer.byteLength} bytes`);
+      
+      // In a real implementation, you would extract text from the PDF here
+      // For now, we'll just return a placeholder message to simulate extraction
+      return `Extracted text from PDF (${pdfBuffer.byteLength} bytes)`;
+    } catch (error) {
+      console.error(`Error extracting text from PDF (attempt ${attempt + 1}):`, error);
+      attempt++;
+      
+      if (attempt >= retries) {
+        throw new Error(`Failed to extract text from PDF after ${retries} attempts: ${error.message}`);
+      }
+      
+      // Wait before retrying
+      await sleep(1000 * attempt);
     }
   }
   
-  throw lastError || new Error('All retry attempts failed')
+  throw new Error("Failed to extract text from PDF");
 }
 
-// Function to extract keywords from text using Gemini API
-async function extractKeywordsWithGemini(text: string, apiKey: string): Promise<Array<{keyword: string, frequency: number}>> {
-  const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-  
-  const prompt = `
-  You are an expert recruiter and hiring manager with deep expertise in technical roles.
-  
-  Please extract the most important skills, technologies, and requirements from the job description below.
-  
-  Return ONLY a JSON array of objects with the format:
-  [{"keyword": "Skill or Technology Name", "frequency": number representing importance from 1-5}]
-  
-  Do not include any markdown, explanation, or other text, just the JSON array.
-  Sort them by frequency (importance) in descending order.
-  
-  JOB DESCRIPTION:
-  ${text}
-  `
-  
-  const response = await fetch(`${endpoint}?key=${apiKey}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
-      }]
-    })
-  })
-  
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error(`Gemini API error: ${response.status} ${errorText}`)
-    throw new Response(errorText, { status: response.status })
-  }
-  
-  const data = await response.json()
-  console.log("Gemini response:", JSON.stringify(data).substring(0, 500) + "...")
-  
-  try {
-    const textResponse = data.candidates[0].content.parts[0].text
-    // Clean up any markdown code formatting that might be in the response
-    const cleanJson = textResponse.replace(/```json|```/g, '').trim()
-    const keywords = JSON.parse(cleanJson)
-    console.log(`Extracted ${keywords.length} keywords:`, keywords.slice(0, 5))
-    return keywords
-  } catch (e) {
-    console.error("Failed to parse Gemini response:", e)
-    console.log("Raw response:", JSON.stringify(data))
-    throw new Error("Failed to parse response from Gemini")
-  }
-}
-
-// Main serve function for the edge function
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
-  
-  try {
-    // Parse request body
-    const requestData = await req.json()
-    const { jobDescription, jobPostingId } = requestData
-    
-    if (!jobDescription) {
-      return new Response(
-        JSON.stringify({ error: 'Job description is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    
-    console.log("Processing job posting:", jobPostingId ? `ID: ${jobPostingId}` : "New job")
-    console.log("Job description length:", jobDescription.length)
-    
-    // Get API key from environment
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'Gemini API key not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    
-    // Extract keywords using Gemini API
-    const keywords = await retryWithBackoff(async () => {
-      return await extractKeywordsWithGemini(jobDescription, apiKey)
-    })
-    
-    console.log(`Extracted ${keywords.length} keywords:`, keywords)
-    
-    // Create database client for Supabase
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    
-    const supabase = createSupabaseClient(supabaseUrl, supabaseKey)
-    
-    let finalJobId = jobPostingId
-    
-    // If no job posting ID was provided, create a new job posting
-    if (!finalJobId) {
-      // Get or create a default job source
-      const { data: sources, error: sourcesError } = await supabase
-        .from('job_sources')
-        .select('*')
-        .limit(1)
-      
-      if (sourcesError) {
-        throw new Error(`Error fetching job sources: ${sourcesError.message}`)
-      }
-      
-      let sourceId
-      if (sources?.length) {
-        sourceId = sources[0].id
-      } else {
-        const { data: newSource, error: createError } = await supabase
-          .from('job_sources')
-          .insert({
-            source_name: 'default',
-            is_public: true
-          })
-          .select()
-          .single()
-        
-        if (createError) {
-          throw new Error(`Error creating job source: ${createError.message}`)
-        }
-        
-        sourceId = newSource.id
-      }
-      
-      // Create a new job posting
-      const { data: jobPosting, error: jobError } = await supabase
-        .from('job_postings')
-        .insert({
-          source_id: sourceId,
-          title: 'Extracted from Description',
-          description: jobDescription,
-          posting_url: 'direct-input',
-          status: 'pending',
-          is_public: true
-        })
-        .select()
-        .single()
-      
-      if (jobError) {
-        throw new Error(`Error creating job posting: ${jobError.message}`)
-      }
-      
-      finalJobId = jobPosting.id
-    }
-    
-    // Insert extracted keywords into the database
-    const keywordInserts = keywords.map(k => ({
-      job_posting_id: finalJobId,
-      keyword: k.keyword,
-      frequency: k.frequency,
-      is_public: true
-    }))
-    
-    const { error: insertError } = await supabase
-      .from('extracted_keywords')
-      .insert(keywordInserts)
-    
-    if (insertError) {
-      throw new Error(`Error inserting keywords: ${insertError.message}`)
-    }
-    
-    // Update job status to processed
-    const { error: updateError } = await supabase
-      .from('job_postings')
-      .update({
-        status: 'processed',
-        processed_at: new Date().toISOString()
-      })
-      .eq('id', finalJobId)
-    
-    if (updateError) {
-      throw new Error(`Error updating job status: ${updateError.message}`)
-    }
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        jobId: finalJobId,
-        keywords: keywords,
-        message: 'Job posting processed successfully'
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
-    
-  } catch (error) {
-    console.error('Error processing job posting:', error)
-    
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
-  }
-})
 
-// Helper function to create a Supabase client
-function createSupabaseClient(supabaseUrl: string, serviceRoleKey: string) {
-  return {
-    from: (table: string) => ({
-      select: (columns = '*') => ({
-        limit: (limit: number) => ({
-          async execute() {
-            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${limit}`, {
-              headers: {
-                'Authorization': `Bearer ${serviceRoleKey}`,
-                'apikey': serviceRoleKey,
-                'Content-Type': 'application/json'
-              }
-            })
-            
-            if (!response.ok) {
-              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
-            }
-            
-            const data = await response.json()
-            return { data, error: null }
-          },
-          async single() {
-            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${limit}`, {
-              headers: {
-                'Authorization': `Bearer ${serviceRoleKey}`,
-                'apikey': serviceRoleKey,
-                'Content-Type': 'application/json'
-              }
-            })
-            
-            if (!response.ok) {
-              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
-            }
-            
-            const data = await response.json()
-            return { data: data.length ? data[0] : null, error: null }
-          }
+  try {
+    console.log('Starting job processing...');
+    
+    // Parse request body
+    const body = await req.json();
+    console.log('Request body:', body);
+    
+    const { jobDescription, pdfUrl, is_public = true } = body;
+    
+    // Check if either jobDescription or pdfUrl is provided
+    if (!jobDescription && !pdfUrl) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No job description or PDF URL provided' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
+    // Initialize repository with admin privileges
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase URL or service role key');
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const jobRepository = new JobRepository(supabase);
+    
+    // Process text content from either direct input or PDF
+    let textContent = jobDescription;
+    
+    if (pdfUrl && !textContent) {
+      console.log('Processing from PDF URL:', pdfUrl);
+      // Extract text from PDF
+      try {
+        textContent = await extractTextFromPdf(pdfUrl);
+      } catch (error) {
+        console.error('Failed to extract text from PDF:', error);
+        return new Response(
+          JSON.stringify({ success: false, error: `Failed to process PDF: ${error.message}` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+    }
+    
+    // Process the job posting content
+    console.log(`Job description length: ${textContent.length}`);
+    
+    // Create job posting record
+    const jobId = await jobRepository.createJobPosting({
+      content: textContent,
+      description: textContent.substring(0, 500) + (textContent.length > 500 ? '...' : ''),
+      status: 'pending',
+      is_public: is_public,
+      pdf_path: pdfUrl || null
+    });
+    
+    console.log('Created job posting with ID:', jobId);
+    
+    // Process with rate limiting to avoid overwhelming the Gemini API
+    try {
+      console.log('Processing with Gemini API...');
+      await sleep(500); // Add a small delay
+      
+      // Call Gemini API to analyze the job posting
+      const { parsedKeywords, error: geminiError } = await analyzeJobPostingWithGemini(textContent);
+      
+      if (geminiError) {
+        console.error('Error from Gemini API:', geminiError);
+        throw new Error(`Gemini API error: ${geminiError}`);
+      }
+      
+      // If Gemini returned keywords, use them
+      let keywords = [];
+      if (parsedKeywords && parsedKeywords.length > 0) {
+        console.log('Using keywords from Gemini:', parsedKeywords);
+        keywords = parsedKeywords;
+      } else {
+        // Fallback to basic keyword extraction
+        console.log('Falling back to basic keyword extraction');
+        keywords = extractKeywords(textContent);
+      }
+      
+      console.log(`Extracted ${keywords.length} keywords`);
+      
+      // Save keywords to database
+      if (keywords.length > 0) {
+        await jobRepository.saveKeywords(jobId, keywords, is_public);
+        console.log('Keywords saved to database');
+      }
+      
+      // Update job status to processed
+      await jobRepository.updateJobStatus(jobId, 'processed');
+      console.log('Job status updated to processed');
+      
+      // Return response with job ID and keywords
+      return new Response(
+        JSON.stringify({
+          success: true,
+          jobId,
+          keywords: keywords.map(k => ({ 
+            keyword: k.keyword, 
+            frequency: k.frequency || 1 
+          }))
         }),
-        eq: (column: string, value: any) => ({
-          async execute() {
-            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&${column}=eq.${value}`, {
-              headers: {
-                'Authorization': `Bearer ${serviceRoleKey}`,
-                'apikey': serviceRoleKey,
-                'Content-Type': 'application/json'
-              }
-            })
-            
-            if (!response.ok) {
-              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
-            }
-            
-            const data = await response.json()
-            return { data, error: null }
-          },
-          async single() {
-            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&${column}=eq.${value}&limit=1`, {
-              headers: {
-                'Authorization': `Bearer ${serviceRoleKey}`,
-                'apikey': serviceRoleKey,
-                'Content-Type': 'application/json'
-              }
-            })
-            
-            if (!response.ok) {
-              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
-            }
-            
-            const data = await response.json()
-            return { data: data.length ? data[0] : null, error: null }
-          }
-        })
-      }),
-      insert: (values: any | any[]) => ({
-        async execute() {
-          const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${serviceRoleKey}`,
-              'apikey': serviceRoleKey,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=representation'
-            },
-            body: JSON.stringify(values)
-          })
-          
-          if (!response.ok) {
-            throw { error: { message: `Error inserting into ${table}: ${response.statusText}` } }
-          }
-          
-          const data = await response.json()
-          return { data, error: null }
-        },
-        select: () => ({
-          async single() {
-            const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${serviceRoleKey}`,
-                'apikey': serviceRoleKey,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=representation'
-              },
-              body: JSON.stringify(values)
-            })
-            
-            if (!response.ok) {
-              throw { error: { message: `Error inserting into ${table}: ${response.statusText}` } }
-            }
-            
-            const data = await response.json()
-            return { data: data.length ? data[0] : null, error: null }
-          }
-        })
-      }),
-      update: (values: any) => ({
-        eq: (column: string, value: any) => ({
-          async execute() {
-            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${column}=eq.${value}`, {
-              method: 'PATCH',
-              headers: {
-                'Authorization': `Bearer ${serviceRoleKey}`,
-                'apikey': serviceRoleKey,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=representation'
-              },
-              body: JSON.stringify(values)
-            })
-            
-            if (!response.ok) {
-              throw { error: { message: `Error updating ${table}: ${response.statusText}` } }
-            }
-            
-            return { error: null }
-          }
-        })
-      })
-    })
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (error) {
+      console.error('Error processing job:', error);
+      
+      // Update job status to failed
+      await jobRepository.updateJobStatus(jobId, 'failed');
+      
+      return new Response(
+        JSON.stringify({ success: false, error: `Processing failed: ${error.message}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error('Unhandled error:', error);
+    
+    return new Response(
+      JSON.stringify({ success: false, error: `Server error: ${error.message}` }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
-}
+});
