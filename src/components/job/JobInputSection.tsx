@@ -41,6 +41,12 @@ const JobInputSection = ({
     try {
       setUploadError(null);
       setUploadedFileName(file.name);
+      
+      // Clear job description to avoid conflicts between PDF and text inputs
+      if (jobDescription.trim()) {
+        setJobDescription(""); 
+      }
+      
       await handlePdfUpload(file);
     } catch (error) {
       console.error("Error handling file upload:", error);

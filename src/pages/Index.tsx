@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -109,6 +108,7 @@ const Index = () => {
           console.log('Using keywords directly from edge function:', result.keywords);
           setKeywordsFromEdgeFunction(result.keywords);
         } else {
+          console.log('No keywords in edge function response, waiting for realtime updates');
           toast.info('PDF is being processed. Results will appear shortly...');
         }
       } else {
@@ -125,6 +125,7 @@ const Index = () => {
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
+    
     resetKeywords();
     setBooleanQuery("");
     setPdfUploaded(false);
