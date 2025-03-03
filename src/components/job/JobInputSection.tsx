@@ -2,7 +2,7 @@
 import { useState } from "react";
 import JobDescriptionInput from "@/components/JobDescriptionInput";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, AlertTriangle, FileText } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface JobInputSectionProps {
@@ -16,7 +16,6 @@ interface JobInputSectionProps {
   handleRefresh: () => void;
   isRefreshing: boolean;
   pdfUploaded: boolean;
-  pdfFileName?: string | null;
 }
 
 const JobInputSection = ({
@@ -29,8 +28,7 @@ const JobInputSection = ({
   handlePdfUpload,
   handleRefresh,
   isRefreshing,
-  pdfUploaded,
-  pdfFileName
+  pdfUploaded
 }: JobInputSectionProps) => {
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -41,14 +39,6 @@ const JobInputSection = ({
     try {
       setUploadError(null);
       setUploadedFileName(file.name);
-      
-      // Clear job description to avoid conflicts between PDF and text inputs
-      if (jobDescription.trim()) {
-        setJobDescription(""); 
-        console.log("Clearing job description text before PDF upload");
-      }
-      
-      console.log("Starting PDF upload for file:", file.name);
       await handlePdfUpload(file);
     } catch (error) {
       console.error("Error handling file upload:", error);
@@ -66,22 +56,14 @@ const JobInputSection = ({
         onSubmit={handleGenerateQuery}
         onFileUpload={handleFileSelect}
         isProcessing={isProcessing}
-        uploadedFileName={uploadedFileName || pdfFileName}
+        uploadedFileName={uploadedFileName}
         uploadError={uploadError}
-        pdfUploaded={pdfUploaded}
       />
       
       <div className="flex items-center justify-between gap-4 px-4">
         {isProcessing && !hasError && (
           <div className="flex items-center gap-2 text-primary matrix-loader p-2">
             <span className="glitch">Processing job data...</span>
-          </div>
-        )}
-        
-        {pdfUploaded && pdfFileName && !isProcessing && (
-          <div className="flex items-center gap-2 text-primary p-2">
-            <FileText className="h-4 w-4" />
-            <span className="text-sm">Using uploaded PDF: {pdfFileName}</span>
           </div>
         )}
         
