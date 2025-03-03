@@ -1,204 +1,406 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { extractKeywords } from "./gemini-service.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
-// Handle JSON parsing errors
-function safeJsonParse(text: string) {
+// CORS headers for cross-origin requests
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Utility function for sleeping/delaying execution
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Retry function with exponential backoff
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Add throttling - wait at least 2 seconds between API calls
+      if (attempt > 0) {
+        const delay = baseDelay * Math.pow(2, attempt - 1)
+        console.log(`Retry attempt ${attempt + 1}, waiting ${delay}ms...`)
+        await sleep(delay)
+      } else {
+        await sleep(2000) // Default throttle
+      }
+      
+      return await operation()
+    } catch (error) {
+      console.error(`Attempt ${attempt + 1} failed:`, error)
+      lastError = error as Error
+      
+      // Check for specific HTTP errors
+      if (error instanceof Response) {
+        const status = error.status
+        
+        // Don't retry on client errors, except for rate limits
+        if (status !== 429 && status >= 400 && status < 500) {
+          throw error
+        }
+      }
+    }
+  }
+  
+  throw lastError || new Error('All retry attempts failed')
+}
+
+// Function to extract keywords from text using Gemini API
+async function extractKeywordsWithGemini(text: string, apiKey: string): Promise<Array<{keyword: string, frequency: number}>> {
+  const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+  
+  const prompt = `
+  You are an expert recruiter and hiring manager with deep expertise in technical roles.
+  
+  Please extract the most important skills, technologies, and requirements from the job description below.
+  
+  Return ONLY a JSON array of objects with the format:
+  [{"keyword": "Skill or Technology Name", "frequency": number representing importance from 1-5}]
+  
+  Do not include any markdown, explanation, or other text, just the JSON array.
+  Sort them by frequency (importance) in descending order.
+  
+  JOB DESCRIPTION:
+  ${text}
+  `
+  
+  const response = await fetch(`${endpoint}?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: prompt
+        }]
+      }]
+    })
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`Gemini API error: ${response.status} ${errorText}`)
+    throw new Response(errorText, { status: response.status })
+  }
+  
+  const data = await response.json()
+  console.log("Gemini response:", JSON.stringify(data).substring(0, 500) + "...")
+  
   try {
-    return JSON.parse(text);
+    const textResponse = data.candidates[0].content.parts[0].text
+    // Clean up any markdown code formatting that might be in the response
+    const cleanJson = textResponse.replace(/```json|```/g, '').trim()
+    const keywords = JSON.parse(cleanJson)
+    console.log(`Extracted ${keywords.length} keywords:`, keywords.slice(0, 5))
+    return keywords
   } catch (e) {
-    console.error('JSON parse error:', e);
-    return null;
+    console.error("Failed to parse Gemini response:", e)
+    console.log("Raw response:", JSON.stringify(data))
+    throw new Error("Failed to parse response from Gemini")
   }
 }
 
+// Main serve function for the edge function
 serve(async (req) => {
-  // Set CORS headers
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Content-Type": "application/json",
-  };
-
   // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
   }
-
+  
   try {
-    // Create Supabase client
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    // Parse request payload
-    const payload = await req.json();
-    let { jobDescription, userId, jobId } = payload;
-
-    console.log("Received request with payload:", JSON.stringify({
-      hasJobDescription: !!jobDescription,
-      hasJobId: !!jobId,
-      hasUserId: !!userId
-    }));
-
-    let jobContent = jobDescription;
-    let existingJobId = jobId;
-
-    // If we have a jobId but no jobDescription, fetch the job content from the database
-    if (!jobDescription && jobId) {
-      console.log(`Fetching job content for job ID: ${jobId}`);
-      const { data: jobData, error: jobError } = await supabase
-        .from("job_postings")
-        .select("content, description")
-        .eq("id", jobId)
-        .single();
-
-      if (jobError) {
-        console.error("Error fetching job posting:", jobError);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Failed to fetch job posting: ${jobError.message}` 
-          }),
-          { headers: corsHeaders, status: 500 }
-        );
-      }
-
-      // Use content or description, whichever is available
-      jobContent = jobData.content || jobData.description;
-      if (!jobContent) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: "Job posting has no content or description" 
-          }),
-          { headers: corsHeaders, status: 400 }
-        );
-      }
-    }
-
-    // If we don't have a job description or job ID, return an error
-    if (!jobContent) {
+    // Parse request body
+    const requestData = await req.json()
+    const { jobDescription, jobPostingId } = requestData
+    
+    if (!jobDescription) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Missing job description or job ID" 
-        }),
-        { headers: corsHeaders, status: 400 }
-      );
+        JSON.stringify({ error: 'Job description is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
-
-    // If we have a job description but no job ID, create a new job posting
-    if (!existingJobId) {
-      console.log("Creating new job posting");
-      const { data: jobData, error: jobError } = await supabase
-        .from("job_postings")
+    
+    console.log("Processing job posting:", jobPostingId ? `ID: ${jobPostingId}` : "New job")
+    console.log("Job description length:", jobDescription.length)
+    
+    // Get API key from environment
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'Gemini API key not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    
+    // Extract keywords using Gemini API
+    const keywords = await retryWithBackoff(async () => {
+      return await extractKeywordsWithGemini(jobDescription, apiKey)
+    })
+    
+    console.log(`Extracted ${keywords.length} keywords:`, keywords)
+    
+    // Create database client for Supabase
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    
+    const supabase = createSupabaseClient(supabaseUrl, supabaseKey)
+    
+    let finalJobId = jobPostingId
+    
+    // If no job posting ID was provided, create a new job posting
+    if (!finalJobId) {
+      // Get or create a default job source
+      const { data: sources, error: sourcesError } = await supabase
+        .from('job_sources')
+        .select('*')
+        .limit(1)
+      
+      if (sourcesError) {
+        throw new Error(`Error fetching job sources: ${sourcesError.message}`)
+      }
+      
+      let sourceId
+      if (sources?.length) {
+        sourceId = sources[0].id
+      } else {
+        const { data: newSource, error: createError } = await supabase
+          .from('job_sources')
+          .insert({
+            source_name: 'default',
+            is_public: true
+          })
+          .select()
+          .single()
+        
+        if (createError) {
+          throw new Error(`Error creating job source: ${createError.message}`)
+        }
+        
+        sourceId = newSource.id
+      }
+      
+      // Create a new job posting
+      const { data: jobPosting, error: jobError } = await supabase
+        .from('job_postings')
         .insert({
-          description: jobContent,
-          user_id: userId,
-          status: "pending"
+          source_id: sourceId,
+          title: 'Extracted from Description',
+          description: jobDescription,
+          posting_url: 'direct-input',
+          status: 'pending',
+          is_public: true
         })
-        .select("id")
-        .single();
-
+        .select()
+        .single()
+      
       if (jobError) {
-        console.error("Error creating job posting:", jobError);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Failed to create job posting: ${jobError.message}` 
-          }),
-          { headers: corsHeaders, status: 500 }
-        );
+        throw new Error(`Error creating job posting: ${jobError.message}`)
       }
-
-      existingJobId = jobData.id;
-      console.log(`Created job posting with ID: ${existingJobId}`);
+      
+      finalJobId = jobPosting.id
     }
-
-    // Extract keywords from the job description
-    console.log("Extracting keywords from job description");
-    const rawKeywords = await extractKeywords(jobContent);
     
-    if (!rawKeywords) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Failed to extract keywords" 
-        }),
-        { headers: corsHeaders, status: 500 }
-      );
-    }
-
-    const keywordsArray = Array.isArray(rawKeywords) ? rawKeywords : [rawKeywords];
+    // Insert extracted keywords into the database
+    const keywordInserts = keywords.map(k => ({
+      job_posting_id: finalJobId,
+      keyword: k.keyword,
+      frequency: k.frequency,
+      is_public: true
+    }))
     
-    console.log(`Extracted ${keywordsArray.length} keywords`);
-
-    // Insert keywords into the database
-    const keywordObjects = keywordsArray.map(keyword => ({
-      keyword: keyword.trim(),
-      job_posting_id: existingJobId,
-      user_id: userId
-    }));
-
-    const { error: keywordError } = await supabase
-      .from("extracted_keywords")
-      .insert(keywordObjects);
-
-    if (keywordError) {
-      console.error("Error inserting keywords:", keywordError);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `Failed to insert keywords: ${keywordError.message}` 
-        }),
-        { headers: corsHeaders, status: 500 }
-      );
+    const { error: insertError } = await supabase
+      .from('extracted_keywords')
+      .insert(keywordInserts)
+    
+    if (insertError) {
+      throw new Error(`Error inserting keywords: ${insertError.message}`)
     }
-
-    // Update job posting status to processed
+    
+    // Update job status to processed
     const { error: updateError } = await supabase
-      .from("job_postings")
+      .from('job_postings')
       .update({
-        status: "processed",
+        status: 'processed',
         processed_at: new Date().toISOString()
       })
-      .eq("id", existingJobId);
-
+      .eq('id', finalJobId)
+    
     if (updateError) {
-      console.error("Error updating job posting status:", updateError);
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          jobId: existingJobId,
-          keywords: keywordsArray,
-          warning: `Job processed but status update failed: ${updateError.message}` 
-        }),
-        { headers: corsHeaders, status: 200 }
-      );
+      throw new Error(`Error updating job status: ${updateError.message}`)
     }
-
-    // Return success response
+    
     return new Response(
       JSON.stringify({
         success: true,
-        jobId: existingJobId,
-        keywords: keywordsArray,
-        message: "Job posting processed successfully"
+        jobId: finalJobId,
+        keywords: keywords,
+        message: 'Job posting processed successfully'
       }),
-      { headers: corsHeaders, status: 200 }
-    );
-
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
+    
   } catch (error) {
-    console.error("Error processing job posting:", error);
+    console.error('Error processing job posting:', error)
+    
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Internal server error: ${error.message}` 
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
       }),
-      { headers: corsHeaders, status: 500 }
-    );
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
   }
-});
+})
+
+// Helper function to create a Supabase client
+function createSupabaseClient(supabaseUrl: string, serviceRoleKey: string) {
+  return {
+    from: (table: string) => ({
+      select: (columns = '*') => ({
+        limit: (limit: number) => ({
+          async execute() {
+            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${limit}`, {
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'apikey': serviceRoleKey,
+                'Content-Type': 'application/json'
+              }
+            })
+            
+            if (!response.ok) {
+              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
+            }
+            
+            const data = await response.json()
+            return { data, error: null }
+          },
+          async single() {
+            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${limit}`, {
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'apikey': serviceRoleKey,
+                'Content-Type': 'application/json'
+              }
+            })
+            
+            if (!response.ok) {
+              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
+            }
+            
+            const data = await response.json()
+            return { data: data.length ? data[0] : null, error: null }
+          }
+        }),
+        eq: (column: string, value: any) => ({
+          async execute() {
+            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&${column}=eq.${value}`, {
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'apikey': serviceRoleKey,
+                'Content-Type': 'application/json'
+              }
+            })
+            
+            if (!response.ok) {
+              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
+            }
+            
+            const data = await response.json()
+            return { data, error: null }
+          },
+          async single() {
+            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&${column}=eq.${value}&limit=1`, {
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'apikey': serviceRoleKey,
+                'Content-Type': 'application/json'
+              }
+            })
+            
+            if (!response.ok) {
+              throw { error: { message: `Error fetching from ${table}: ${response.statusText}` } }
+            }
+            
+            const data = await response.json()
+            return { data: data.length ? data[0] : null, error: null }
+          }
+        })
+      }),
+      insert: (values: any | any[]) => ({
+        async execute() {
+          const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${serviceRoleKey}`,
+              'apikey': serviceRoleKey,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(values)
+          })
+          
+          if (!response.ok) {
+            throw { error: { message: `Error inserting into ${table}: ${response.statusText}` } }
+          }
+          
+          const data = await response.json()
+          return { data, error: null }
+        },
+        select: () => ({
+          async single() {
+            const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'apikey': serviceRoleKey,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify(values)
+            })
+            
+            if (!response.ok) {
+              throw { error: { message: `Error inserting into ${table}: ${response.statusText}` } }
+            }
+            
+            const data = await response.json()
+            return { data: data.length ? data[0] : null, error: null }
+          }
+        })
+      }),
+      update: (values: any) => ({
+        eq: (column: string, value: any) => ({
+          async execute() {
+            const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${column}=eq.${value}`, {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${serviceRoleKey}`,
+                'apikey': serviceRoleKey,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify(values)
+            })
+            
+            if (!response.ok) {
+              throw { error: { message: `Error updating ${table}: ${response.statusText}` } }
+            }
+            
+            return { error: null }
+          }
+        })
+      })
+    })
+  }
+}

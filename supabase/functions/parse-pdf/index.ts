@@ -1,164 +1,118 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import * as pdfjs from "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1'
 
-// Configure PDF.js worker
-const pdfjsWorker = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.worker.min.js");
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-
-interface RequestPayload {
-  pdfUrl: string;
-  fileName: string;
-  userId?: string;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 serve(async (req) => {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Content-Type": "application/json",
-  };
-
   // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    // Parse request body
-    const payload: RequestPayload = await req.json();
-    const { pdfUrl, fileName, userId } = payload;
-
-    if (!pdfUrl) {
+    console.log('Processing PDF upload request')
+    
+    const formData = await req.formData()
+    const pdfFile = formData.get('pdf')
+    
+    if (!pdfFile || !(pdfFile instanceof File)) {
+      console.error('No PDF file found in request')
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Missing PDF URL in request" 
-        }),
-        { headers: corsHeaders, status: 400 }
-      );
+        JSON.stringify({ success: false, error: 'No PDF file provided' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
     }
 
-    console.log(`Processing PDF: ${pdfUrl}`);
+    // Create Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const supabase = createClient(supabaseUrl, supabaseKey)
+    
+    console.log('Uploading PDF to storage')
 
-    // Fetch the PDF file
-    const pdfResponse = await fetch(pdfUrl);
-    if (!pdfResponse.ok) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `Failed to fetch PDF: ${pdfResponse.statusText}` 
-        }),
-        { headers: corsHeaders, status: 500 }
-      );
-    }
-
-    const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+    // Clean the filename to remove non-ASCII characters
+    const originalFileName = pdfFile.name
+    const sanitizedFileName = originalFileName.replace(/[^\x00-\x7F]/g, '')
     
-    // Parse PDF text using PDF.js
-    const loadingTask = pdfjs.getDocument({ data: pdfArrayBuffer });
-    const pdf = await loadingTask.promise;
+    // Generate a unique path for the PDF
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const randomId = crypto.randomUUID()
+    const pdfPath = `job-pdfs/${timestamp}-${randomId}.pdf`
     
-    console.log(`PDF loaded. Number of pages: ${pdf.numPages}`);
-    
-    let fullText = "";
-    
-    // Extract text from all pages
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(" ");
-      fullText += pageText + "\n";
-    }
-    
-    console.log(`Extracted ${fullText.length} characters of text from PDF`);
-    
-    // Trim the text to ensure it's not too long for the database
-    const maxLength = 500000; // Set a reasonable maximum length
-    const trimmedText = fullText.length > maxLength 
-      ? fullText.substring(0, maxLength) + "... (truncated)"
-      : fullText;
-    
-    // Create a job posting record in the database
-    const { data: jobData, error: jobError } = await supabase
-      .from("job_postings")
-      .insert({
-        title: fileName,
-        content: trimmedText,
-        pdf_path: pdfUrl,
-        user_id: userId,
-        status: "pending"
+    // Upload the PDF to Supabase Storage
+    const { data: storageData, error: storageError } = await supabase
+      .storage
+      .from('job_pdfs')
+      .upload(pdfPath, pdfFile, {
+        contentType: 'application/pdf',
+        upsert: false
       })
-      .select("id")
-      .single();
+    
+    if (storageError) {
+      console.error('Error uploading PDF to storage:', storageError)
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to upload PDF file', details: storageError }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+    
+    console.log('PDF uploaded successfully, creating job posting record')
+    
+    // Create a new job posting entry
+    const { data: jobData, error: jobError } = await supabase
+      .from('job_postings')
+      .insert({
+        status: 'pending',
+        pdf_path: pdfPath,
+        description: `PDF upload: ${sanitizedFileName}`,
+      })
+      .select('id')
+      .single()
     
     if (jobError) {
-      console.error("Error creating job posting:", jobError);
+      console.error('Error creating job posting record:', jobError)
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `Failed to create job posting: ${jobError.message}` 
-        }),
-        { headers: corsHeaders, status: 500 }
-      );
+        JSON.stringify({ success: false, error: 'Failed to create job record', details: jobError }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
     }
     
-    const jobId = jobData.id;
-    console.log(`Created job posting with ID: ${jobId}`);
+    const jobId = jobData.id
+    console.log('Job posting record created with ID:', jobId)
     
-    // Now process the job to extract keywords using the scrape-job-posting function
-    const { data: processingData, error: processingError } = await supabase.functions.invoke(
-      "scrape-job-posting",
-      {
-        body: { 
-          jobId,
-          userId 
-        }
+    // Trigger the job-posting scraping function
+    const { data: scrapingData, error: scrapingError } = await supabase.functions.invoke('scrape-job-posting', {
+      body: { 
+        jobId: jobId,
+        pdfPath: pdfPath
       }
-    );
+    })
     
-    if (processingError) {
-      console.error("Error processing job:", processingError);
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          jobId,
-          pdfPath: pdfUrl,
-          warning: `Job created but keyword extraction failed: ${processingError.message}` 
-        }),
-        { headers: corsHeaders, status: 200 }
-      );
+    if (scrapingError) {
+      console.error('Error invoking scrape-job-posting function:', scrapingError)
+      // We don't return an error here, as the PDF upload was successful
+      // The job processing can be retried later
     }
     
-    // Return the successful response
     return new Response(
       JSON.stringify({
         success: true,
-        jobId,
-        pdfPath: pdfUrl,
-        fileName,
-        keywords: processingData.keywords || [],
-        message: "PDF processed successfully"
+        jobId: jobId,
+        pdfPath: pdfPath,
+        fileName: sanitizedFileName
       }),
-      { headers: corsHeaders, status: 200 }
-    );
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    )
     
   } catch (error) {
-    console.error("Error processing PDF:", error);
+    console.error('Unexpected error processing request:', error)
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Internal server error: ${error.message}` 
-      }),
-      { headers: corsHeaders, status: 500 }
-    );
+      JSON.stringify({ success: false, error: 'Internal server error', details: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    )
   }
-});
+})

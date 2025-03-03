@@ -39,23 +39,6 @@ const JobInputSection = ({
     try {
       setUploadError(null);
       setUploadedFileName(file.name);
-      
-      // Validate file type
-      const fileType = file.type.toLowerCase();
-      if (fileType !== 'application/pdf') {
-        setUploadError("Only PDF files are supported for processing");
-        toast.error("Please upload a PDF file");
-        return;
-      }
-      
-      // Validate file size (limit to 10MB)
-      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
-      if (file.size > maxSize) {
-        setUploadError(`File size exceeds the limit (max: 10MB)`);
-        toast.error("File is too large (max: 10MB)");
-        return;
-      }
-      
       await handlePdfUpload(file);
     } catch (error) {
       console.error("Error handling file upload:", error);

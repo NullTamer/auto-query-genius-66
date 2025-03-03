@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -32,8 +33,7 @@ const Index = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob,
-    handlePdfUpload: processPdfUpload
+    processJob
   } = useJobProcessing();
 
   const {
@@ -101,32 +101,54 @@ const Index = () => {
       resetKeywords();
       setBooleanQuery("");
       
-      console.log('Processing PDF upload:', file.name);
+      const formData = new FormData();
+      formData.append('pdf', file);
       
-      const result = await processPdfUpload(file);
+      console.log('Uploading PDF file to parse-pdf edge function');
       
-      if (!result || !result.jobId) {
-        throw new Error('Failed to process PDF upload');
+      const { data, error } = await supabase.functions.invoke('parse-pdf', {
+        body: formData,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (error) {
+        console.error('Error invoking edge function:', error);
+        throw error;
       }
       
+      console.log('PDF processing response:', data);
+      
+      if (!data.success || !data.jobId) {
+        throw new Error(data.error || 'Failed to process PDF');
+      }
+      
+      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+      setCurrentJobId(jobId);
+      setCurrentPdfPath(data.pdfPath);
       setPdfUploaded(true);
-      setCurrentPdfPath(result.pdfPath || null);
+      setLastScrapeTime(new Date().toISOString());
       
-      if (result.keywords && result.keywords.length > 0) {
-        console.log('Setting keywords from PDF processing:', result.keywords);
-        setKeywordsFromEdgeFunction(result.keywords);
+      toast.success(`PDF "${data.fileName}" uploaded successfully`);
+      
+      if (data.keywords && data.keywords.length > 0) {
+        console.log('Using keywords directly from edge function:', data.keywords);
+        setKeywordsFromEdgeFunction(data.keywords);
+        setIsProcessing(false);
       } else {
-        console.log('Waiting for realtime updates to fetch keywords for job ID:', result.jobId);
+        toast.info('PDF is being processed. Results will appear shortly...');
       }
       
+      console.log('Processing started for job ID:', jobId);
     } catch (error) {
-      console.error('Error in handlePdfUpload:', error);
+      console.error('Error uploading PDF:', error);
       toast.error('Failed to process PDF file');
       setHasError(true);
       setIsProcessing(false);
       setPdfUploaded(false);
     }
-  }, [processPdfUpload, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction]);
+  }, [debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
