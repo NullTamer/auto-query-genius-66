@@ -45,8 +45,10 @@ const JobInputSection = ({
       // Clear job description to avoid conflicts between PDF and text inputs
       if (jobDescription.trim()) {
         setJobDescription(""); 
+        console.log("Clearing job description text before PDF upload");
       }
       
+      console.log("Starting PDF upload for file:", file.name);
       await handlePdfUpload(file);
     } catch (error) {
       console.error("Error handling file upload:", error);

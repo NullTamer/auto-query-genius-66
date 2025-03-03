@@ -75,7 +75,7 @@ export const useJobProcessing = () => {
 
     try {
       const session = await supabase.auth.getSession();
-      console.log('Current session:', session);
+      console.log('Current session for PDF upload:', session);
 
       processingRef.current = true;
       setIsProcessing(true);
@@ -87,10 +87,13 @@ export const useJobProcessing = () => {
       
       console.log('Uploading PDF file to parse-pdf edge function');
       
-      // Include the auth token if available
+      // Properly include auth token if available
       const headers: Record<string, string> = {};
       if (session.data.session?.access_token) {
         headers['Authorization'] = `Bearer ${session.data.session.access_token}`;
+        console.log('Added Authorization header for PDF upload');
+      } else {
+        console.log('No access token available for PDF upload, proceeding as guest');
       }
       
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
