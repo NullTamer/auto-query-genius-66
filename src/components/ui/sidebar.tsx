@@ -3,7 +3,6 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
-import { Slot } from "@radix-ui/react-slot"
 
 // Context for sidebar state
 type SidebarContextType = {
@@ -245,18 +244,16 @@ export function SidebarMenuItem({
 }
 
 // Sidebar menu button
-interface SidebarMenuButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  asChild?: boolean;
-}
-
 export function SidebarMenuButton({
   className,
   children,
   asChild = false,
   ...props
-}: SidebarMenuButtonProps) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  asChild?: boolean
+}) {
   const { isOpen } = useSidebarContext()
-  const Comp = asChild ? Slot : "button"
+  const Comp = asChild ? "div" : "button"
 
   return (
     <Comp
