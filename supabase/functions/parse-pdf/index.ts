@@ -1,181 +1,214 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS request for CORS preflight');
-    return new Response(null, {
-      headers: corsHeaders,
-      status: 204,
-    });
-  }
-
-  // Only process POST requests
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 405,
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('Processing PDF upload request');
+    // Initialize Supabase client with service role key
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
     
-    // Get formData from request
-    const formData = await req.formData();
-    const file = formData.get('pdf');
-    
-    if (!file || !(file instanceof File)) {
+    // Create client with anonymous key for storage operations
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // Create admin client with service role key for DB operations
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Parse request body
+    const { pdfUrl } = await req.json();
+
+    if (!pdfUrl) {
       return new Response(
-        JSON.stringify({ error: 'No PDF file provided' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({ 
+          success: false, 
+          error: "No PDF URL provided" 
+        }),
+        { 
+          status: 400, 
+          headers: { 
+            ...corsHeaders,
+            "Content-Type": "application/json" 
+          } 
+        }
       );
     }
 
-    console.log(`Processing PDF file: ${file.name}, Size: ${file.size} bytes`);
+    console.log("Processing PDF from URL:", pdfUrl);
 
-    // Initialize Supabase client with service role key
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-
-    // Check if storage bucket exists, create if not
-    const { data: buckets } = await supabaseAdmin.storage.listBuckets();
-    if (!buckets?.find(b => b.name === 'job_pdfs')) {
-      console.log('Creating job_pdfs bucket');
-      await supabaseAdmin.storage.createBucket('job_pdfs', {
-        public: true,
-        fileSizeLimit: 10485760, // 10MB
-      });
-    }
-
-    // Generate unique filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileExt = file.name.split('.').pop()?.toLowerCase();
-    const uniqueFileName = `${timestamp}-${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
-    const filePath = `uploads/${uniqueFileName}`;
-
-    console.log(`Uploading to storage path: ${filePath}`);
-
-    // Upload file to storage
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from('job_pdfs')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (uploadError) {
-      console.error('Storage upload error:', uploadError);
-      throw new Error(`Failed to upload file: ${uploadError.message}`);
-    }
-
-    // Get public URL
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from('job_pdfs')
-      .getPublicUrl(filePath);
-
-    // Extract PDF text using an API or service
-    console.log('Extracting text from PDF...');
+    // Fetch the PDF content
+    let pdfResponse;
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2 seconds delay between retries
     
-    // Simulate PDF text extraction for now
-    // In a real application, you would use a PDF parsing library or API
-    const extractedText = `This is extracted text from the PDF file "${file.name}". 
-    In a real application, this would contain the actual content of the PDF.
-    For now, we're simulating the extraction process so you can see how the workflow functions.`;
-
-    console.log('Creating job entry in database');
-    
-    // Create job posting entry
-    const { data: jobData, error: jobError } = await supabaseAdmin
-      .from('job_postings')
-      .insert({
-        original_text: extractedText,
-        status: 'processing',
-        source: 'pdf_upload',
-        is_public: true,
-        metadata: {
-          fileName: file.name,
-          fileSize: file.size,
-          pdfPath: filePath,
-          publicUrl: publicUrlData.publicUrl
+    while (retryCount < maxRetries) {
+      try {
+        pdfResponse = await fetch(pdfUrl);
+        
+        if (pdfResponse.status === 404) {
+          console.log(`PDF not found (404). Retry ${retryCount + 1}/${maxRetries}`);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            continue;
+          }
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: "PDF not found" 
+            }),
+            { 
+              status: 404, 
+              headers: { 
+                ...corsHeaders,
+                "Content-Type": "application/json" 
+              } 
+            }
+          );
         }
-      })
+        
+        if (pdfResponse.status === 429) {
+          console.log(`Rate limit exceeded (429). Retry ${retryCount + 1}/${maxRetries}`);
+          retryCount++;
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            continue;
+          }
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: "Rate limit exceeded" 
+            }),
+            { 
+              status: 429, 
+              headers: { 
+                ...corsHeaders,
+                "Content-Type": "application/json" 
+              } 
+            }
+          );
+        }
+        
+        if (!pdfResponse.ok) {
+          throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
+        }
+        
+        break; // Success, exit the retry loop
+      } catch (error) {
+        console.error(`Error fetching PDF (attempt ${retryCount + 1}/${maxRetries}):`, error);
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    // Extract text from PDF using an external service or library
+    // This is a simplified example
+    const pdfBuffer = await pdfResponse.arrayBuffer();
+    
+    // Mock PDF text extraction for this example
+    // In a real implementation, you'd use PDF.js or a similar library
+    const extractedText = `This is extracted text from a PDF document at ${pdfUrl}. 
+    In a real implementation, you would use PDF.js or a similar library to extract the actual text.
+    For now, this is a placeholder to demonstrate the flow.`;
+    
+    console.log("Extracted text from PDF:", extractedText.substring(0, 100) + "...");
+
+    // Store the job posting in the database
+    const { data: jobPosting, error: jobError } = await supabaseAdmin
+      .from('job_postings')
+      .insert([
+        { 
+          content: extractedText,
+          pdf_path: pdfUrl,
+          is_public: true,
+          status: 'processed',
+          processed_at: new Date().toISOString()
+        }
+      ])
       .select()
       .single();
 
     if (jobError) {
-      console.error('Database job creation error:', jobError);
-      throw new Error(`Failed to create job entry: ${jobError.message}`);
+      console.error("Error storing job posting:", jobError);
+      throw jobError;
     }
 
-    // Process keywords (simplified for demonstration)
+    console.log("Job posting stored with ID:", jobPosting.id);
+
+    // Generate keywords (in a real implementation, you might use an AI service here)
     const keywords = [
-      { keyword: "PDF Upload", frequency: 3 },
-      { keyword: "Sample", frequency: 2 },
-      { keyword: "Test", frequency: 1 }
+      { keyword: "pdf", frequency: 5 },
+      { keyword: "document", frequency: 3 },
+      { keyword: "text", frequency: 7 },
+      { keyword: "extraction", frequency: 2 }
     ];
 
-    // Insert keywords
-    if (keywords.length > 0) {
-      console.log('Inserting keywords:', keywords);
-      
-      const keywordEntries = keywords.map(k => ({
-        job_posting_id: jobData.id,
-        keyword: k.keyword,
-        frequency: k.frequency,
-        is_public: true
-      }));
+    // Store the keywords
+    const { error: keywordsError } = await supabaseAdmin
+      .from('extracted_keywords')
+      .insert(
+        keywords.map(k => ({
+          job_posting_id: jobPosting.id,
+          keyword: k.keyword,
+          frequency: k.frequency,
+          is_public: true
+        }))
+      );
 
-      const { error: keywordError } = await supabaseAdmin
-        .from('extracted_keywords')
-        .insert(keywordEntries);
-
-      if (keywordError) {
-        console.error('Keyword insertion error:', keywordError);
-        // We'll continue even if keyword insertion fails
-      }
+    if (keywordsError) {
+      console.error("Error storing keywords:", keywordsError);
+      throw keywordsError;
     }
 
-    // Update job status to completed
-    await supabaseAdmin
-      .from('job_postings')
-      .update({ status: 'completed' })
-      .eq('id', jobData.id);
+    console.log("Keywords stored successfully");
 
-    console.log('PDF processing completed successfully');
-
+    // Return the response
     return new Response(
       JSON.stringify({
         success: true,
-        message: "PDF processed successfully",
-        jobId: jobData.id,
-        pdfPath: filePath,
+        jobId: jobPosting.id,
+        pdfPath: pdfUrl,
         extractedText: extractedText,
         keywords: keywords
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      }
     );
-
   } catch (error) {
-    console.error('Error processing PDF:', error);
+    console.error("Error processing PDF:", error);
     
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'An unknown error occurred' 
+      JSON.stringify({
+        success: false,
+        error: error.message
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      }
     );
   }
 });

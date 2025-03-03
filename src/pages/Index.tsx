@@ -33,7 +33,8 @@ const Index = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob
+    processJob,
+    uploadPdf
   } = useJobProcessing();
 
   const {
@@ -101,53 +102,38 @@ const Index = () => {
       resetKeywords();
       setBooleanQuery("");
       
-      const formData = new FormData();
-      formData.append('pdf', file);
+      console.log('Calling uploadPdf with file:', file.name);
+      const jobId = await uploadPdf(file);
       
-      console.log('Uploading PDF file to parse-pdf edge function');
+      if (!jobId) {
+        throw new Error('Failed to process PDF');
+      }
       
-      const { data, error } = await supabase.functions.invoke('parse-pdf', {
-        body: formData,
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.getSession().then(({ data }) => data.session?.access_token)}`
+      // Fetch the job posting data to get the extracted text
+      const { data: jobData, error: jobError } = await supabase
+        .from('job_postings')
+        .select('content, description')
+        .eq('id', jobId)
+        .eq('is_public', true)
+        .single();
+      
+      if (jobError) {
+        console.error('Error fetching job data:', jobError);
+      } else if (jobData) {
+        console.log('Job data fetched:', jobData);
+        // Set the extracted text as job description
+        if (jobData.content) {
+          console.log('Setting content from job data to job description');
+          setJobDescription(jobData.content);
+        } else if (jobData.description) {
+          console.log('Setting description from job data to job description');
+          setJobDescription(jobData.description);
         }
-      });
-      
-      if (error) {
-        console.error('Error invoking edge function:', error);
-        throw error;
       }
       
-      console.log('PDF processing response:', data);
-      
-      if (!data.success || !data.jobId) {
-        throw new Error(data.error || 'Failed to process PDF');
-      }
-      
-      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
-      setCurrentJobId(jobId);
-      setCurrentPdfPath(data.pdfPath);
+      console.log('PDF processing completed for job ID:', jobId);
+      debouncedFetchKeywords(jobId);
       setPdfUploaded(true);
-      setLastScrapeTime(new Date().toISOString());
-      
-      // Important: Set the extracted text as job description if it's available
-      if (data.extractedText) {
-        console.log('Setting extracted text from PDF to job description');
-        setJobDescription(data.extractedText);
-      }
-      
-      toast.success(`PDF "${file.name}" uploaded successfully`);
-      
-      if (data.keywords && data.keywords.length > 0) {
-        console.log('Using keywords directly from edge function:', data.keywords);
-        setKeywordsFromEdgeFunction(data.keywords);
-        setIsProcessing(false);
-      } else {
-        toast.info('PDF is being processed. Results will appear shortly...');
-      }
-      
-      console.log('Processing started for job ID:', jobId);
     } catch (error) {
       console.error('Error uploading PDF:', error);
       toast.error('Failed to process PDF file');
@@ -155,7 +141,7 @@ const Index = () => {
       setIsProcessing(false);
       setPdfUploaded(false);
     }
-  }, [resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime, setJobDescription]);
+  }, [resetKeywords, uploadPdf, debouncedFetchKeywords, setIsProcessing, setHasError]);
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
@@ -167,11 +153,11 @@ const Index = () => {
     try {
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
-          jobDescription
+          jobDescription,
+          is_public: true
         },
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.getSession().then(({ data }) => data.session?.access_token)}`
+          'Content-Type': 'application/json'
         }
       });
       

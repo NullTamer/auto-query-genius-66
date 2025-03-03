@@ -146,7 +146,7 @@ export const useKeywords = () => {
       setupRealtimeSubscription(jobId);
       fetchKeywords(jobId);
     }, 300),
-    [setupRealtimeSubscription, fetchKeywords]
+    [setupRealtimeSubscription]
   );
 
   return {

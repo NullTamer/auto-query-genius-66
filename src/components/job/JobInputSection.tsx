@@ -40,11 +40,8 @@ const JobInputSection = ({
       setUploadError(null);
       setUploadedFileName(file.name);
       
-      // Process the PDF file
+      // Process the PDF file - this will use anonymous access
       await handlePdfUpload(file);
-      
-      // Important: Don't clear the job description as that's where we'll see
-      // the PDF content if it's set from the response
       
       toast.success(`File ${file.name} uploaded and being processed`);
     } catch (error) {

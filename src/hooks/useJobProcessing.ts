@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -95,11 +94,6 @@ export const useJobProcessing = () => {
 
       console.log('Uploading PDF file to storage:', filePath);
 
-      // Get authentication token if available
-      const { data: sessionData } = await supabase.auth.getSession();
-      const authHeader = sessionData.session ? 
-        { 'Authorization': `Bearer ${sessionData.session.access_token}` } : {};
-
       // Upload the file to Supabase Storage using anonymous access
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('job_pdfs')
@@ -124,14 +118,13 @@ export const useJobProcessing = () => {
 
       console.log('Public URL:', publicUrlData.publicUrl);
 
-      // Process the PDF using the edge function
-      const { data: processData, error: processError } = await supabase.functions.invoke('scrape-job-posting', {
+      // Process the PDF using the edge function with anonymous access
+      const { data: processData, error: processError } = await supabase.functions.invoke('parse-pdf', {
         body: { 
           pdfUrl: publicUrlData.publicUrl,
-          is_public: true // Set this to true for anonymous access
+          is_public: true
         },
         headers: {
-          ...authHeader,
           'Content-Type': 'application/json'
         }
       });
@@ -179,6 +172,6 @@ export const useJobProcessing = () => {
     currentJobId,
     setCurrentJobId,
     processJob,
-    uploadPdf // Export the new PDF upload function
+    uploadPdf
   };
 };

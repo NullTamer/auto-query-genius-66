@@ -1,143 +1,153 @@
 
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { GeminiService } from './gemini-service.ts'
-import { JobRepository } from './job-repository.ts'
-import { sanitizeKeywords } from './utils.ts'
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Add proper CORS headers
+// CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
-  'Access-Control-Max-Age': '86400',
 };
-
-console.log('Scrape job posting edge function loaded')
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS request for CORS preflight');
-    return new Response(null, {
-      headers: corsHeaders,
-      status: 204,
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('Request received:', req.method)
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
-
-    if (!supabaseUrl || !supabaseKey || !geminiApiKey) {
-      throw new Error('Missing required environment variables')
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey)
-    const jobRepository = new JobRepository(supabase)
-    const geminiService = new GeminiService(geminiApiKey)
-
-    // Get request payload
-    const payload = await req.json()
-    const { jobDescription, pdfUrl, is_public = true } = payload
-
-    console.log(`Processing job with public access: ${is_public}`)
+    // Initialize Supabase client with service role key for admin operations
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
     
+    // Create client with anonymous key for storage operations
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    // Create admin client with service role key for DB operations
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Parse request body
+    const { jobDescription, pdfUrl, is_public = false } = await req.json();
+
     if (!jobDescription && !pdfUrl) {
-      throw new Error('Either jobDescription or pdfUrl must be provided')
-    }
-
-    let originalText = jobDescription
-    let source = 'manual_entry'
-
-    // If a PDF URL is provided, try to extract text from it
-    if (pdfUrl) {
-      console.log('PDF URL provided, fetching content:', pdfUrl)
-      try {
-        const pdfResponse = await fetch(pdfUrl)
-        if (!pdfResponse.ok) {
-          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`)
-        }
-        // In a real application, you'd extract text from the PDF here
-        // For now, just use a placeholder
-        originalText = `Text extracted from PDF at ${pdfUrl}`
-        source = 'pdf_upload'
-      } catch (error) {
-        console.error('Error fetching PDF:', error)
-        throw new Error(`Failed to fetch PDF: ${error.message}`)
-      }
-    }
-
-    // Create job posting
-    console.log('Creating job posting in database')
-    const jobPosting = await jobRepository.createJobPosting(originalText, source, is_public)
-    
-    if (!jobPosting || !jobPosting.id) {
-      throw new Error('Failed to create job posting')
-    }
-
-    const jobId = jobPosting.id
-    console.log(`Job posting created with ID: ${jobId}`)
-
-    // Process keywords with Gemini
-    let keywords = []
-    try {
-      console.log('Extracting keywords with Gemini')
-      const extractedKeywords = await geminiService.extractKeywords(originalText)
-      keywords = sanitizeKeywords(extractedKeywords)
-      
-      if (keywords.length === 0) {
-        console.log('No keywords extracted, falling back to basic extraction')
-        // Fallback to basic extraction if Gemini fails
-        const basicKeywords = originalText
-          .toLowerCase()
-          .replace(/[^\w\s]/g, '')
-          .split(/\s+/)
-          .filter(word => word.length > 3)
-          .map(word => ({ keyword: word, frequency: 1 }))
-          .slice(0, 20)
-        
-        keywords = basicKeywords
-      }
-      
-      // Store keywords
-      console.log(`Storing ${keywords.length} keywords`)
-      await jobRepository.storeKeywords(jobId, keywords, is_public)
-      
-      // Update job status
-      await jobRepository.updateJobStatus(jobId, 'completed')
-      
       return new Response(
-        JSON.stringify({
-          success: true,
-          jobId: jobId,
-          keywords: keywords,
-          message: 'Job posting processed successfully'
+        JSON.stringify({ 
+          success: false, 
+          error: "No job description or PDF URL provided" 
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    } catch (error) {
-      console.error('Error processing job:', error)
-      
-      // Update job status to error
-      await jobRepository.updateJobStatus(jobId, 'error', error.message)
-      
-      throw error
+        { 
+          status: 400, 
+          headers: { 
+            ...corsHeaders,
+            "Content-Type": "application/json" 
+          } 
+        }
+      );
     }
+
+    // Source of the job description
+    const source = pdfUrl ? 'pdf' : 'text';
+    console.log(`Processing job description from ${source}`);
+
+    // Content to process
+    const contentToProcess = jobDescription || "";
+
+    // Create a job posting entry
+    const { data: jobPosting, error: jobError } = await supabaseAdmin
+      .from('job_postings')
+      .insert([
+        { 
+          content: contentToProcess,
+          pdf_path: pdfUrl || null,
+          is_public: true, // Always make it public for anonymous access
+          status: 'processed',
+          processed_at: new Date().toISOString()
+        }
+      ])
+      .select()
+      .single();
+
+    if (jobError) {
+      console.error("Error storing job posting:", jobError);
+      throw jobError;
+    }
+
+    console.log("Job posting stored with ID:", jobPosting.id);
+
+    // Generate keywords based on the job description
+    // In a real implementation, you'd use NLP or an AI service
+    const keywordExtractor = (text: string) => {
+      // Simple mock implementation - extract words and count frequencies
+      const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+      const wordCount: Record<string, number> = {};
+      
+      words.forEach(word => {
+        if (word.length > 3) { // Only consider words with more than 3 characters
+          wordCount[word] = (wordCount[word] || 0) + 1;
+        }
+      });
+      
+      // Convert to array and sort by frequency
+      return Object.entries(wordCount)
+        .filter(([word]) => !['and', 'the', 'for', 'with', 'that', 'this'].includes(word))
+        .map(([keyword, frequency]) => ({ keyword, frequency }))
+        .sort((a, b) => b.frequency - a.frequency)
+        .slice(0, 20); // Take top 20 keywords
+    };
+
+    const extractedKeywords = keywordExtractor(contentToProcess);
+
+    // Store the keywords
+    if (extractedKeywords.length > 0) {
+      const { error: keywordsError } = await supabaseAdmin
+        .from('extracted_keywords')
+        .insert(
+          extractedKeywords.map(k => ({
+            job_posting_id: jobPosting.id,
+            keyword: k.keyword,
+            frequency: k.frequency,
+            is_public: true // Always make keywords public for anonymous access
+          }))
+        );
+
+      if (keywordsError) {
+        console.error("Error storing keywords:", keywordsError);
+        throw keywordsError;
+      }
+
+      console.log("Keywords stored successfully");
+    }
+
+    // Return the response
+    return new Response(
+      JSON.stringify({
+        success: true,
+        jobId: jobPosting.id,
+        keywords: extractedKeywords,
+        source: source
+      }),
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      }
+    );
   } catch (error) {
-    console.error('Edge function error:', error)
+    console.error("Error processing job posting:", error);
     
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'An unknown error occurred'
+        error: error.message
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
       }
-    )
+    );
   }
-})
+});
