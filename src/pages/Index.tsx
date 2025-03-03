@@ -109,7 +109,8 @@ const Index = () => {
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
         body: formData,
         headers: {
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.getSession().then(({ data }) => data.session?.access_token)}`
         }
       });
       
@@ -130,7 +131,13 @@ const Index = () => {
       setPdfUploaded(true);
       setLastScrapeTime(new Date().toISOString());
       
-      toast.success(`PDF "${data.fileName}" uploaded successfully`);
+      // Important: Set the extracted text as job description if it's available
+      if (data.extractedText) {
+        console.log('Setting extracted text from PDF to job description');
+        setJobDescription(data.extractedText);
+      }
+      
+      toast.success(`PDF "${file.name}" uploaded successfully`);
       
       if (data.keywords && data.keywords.length > 0) {
         console.log('Using keywords directly from edge function:', data.keywords);
@@ -148,7 +155,7 @@ const Index = () => {
       setIsProcessing(false);
       setPdfUploaded(false);
     }
-  }, [debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime, setJobDescription]);
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
@@ -161,6 +168,10 @@ const Index = () => {
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.getSession().then(({ data }) => data.session?.access_token)}`
         }
       });
       

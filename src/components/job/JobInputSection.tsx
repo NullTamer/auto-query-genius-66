@@ -43,10 +43,8 @@ const JobInputSection = ({
       // Process the PDF file
       await handlePdfUpload(file);
       
-      // Clear any previous job description text since we're now using a PDF
-      if (jobDescription) {
-        setJobDescription("");
-      }
+      // Important: Don't clear the job description as that's where we'll see
+      // the PDF content if it's set from the response
       
       toast.success(`File ${file.name} uploaded and being processed`);
     } catch (error) {

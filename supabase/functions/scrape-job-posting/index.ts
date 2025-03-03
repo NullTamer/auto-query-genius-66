@@ -1,200 +1,143 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
-import { JobRepository } from "./job-repository.ts";
-import { extractKeywords, parseJobDescription } from "./utils.ts";
-import { analyzeJobPostingWithGemini } from "./gemini-service.ts";
 
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { GeminiService } from './gemini-service.ts'
+import { JobRepository } from './job-repository.ts'
+import { sanitizeKeywords } from './utils.ts'
+
+// Add proper CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+  'Access-Control-Max-Age': '86400',
 };
 
-// Helper function to sleep/delay for throttling
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Helper function to extract text from PDF URL
-async function extractTextFromPdf(pdfUrl: string, retries = 3): Promise<string> {
-  let attempt = 0;
-  
-  while (attempt < retries) {
-    try {
-      console.log(`Fetching PDF from URL: ${pdfUrl}, attempt ${attempt + 1}`);
-      const response = await fetch(pdfUrl);
-      
-      if (!response.ok) {
-        const status = response.status;
-        console.error(`HTTP error fetching PDF: ${status}, URL: ${pdfUrl}`);
-        
-        if (status === 404) {
-          throw new Error("PDF file not found");
-        }
-        
-        if (status === 429) {
-          // Rate limited, wait longer before retry
-          await sleep(2000 * (attempt + 1));
-          attempt++;
-          continue;
-        }
-        
-        throw new Error(`Failed to fetch PDF: ${status}`);
-      }
-      
-      // Get PDF content as ArrayBuffer
-      const pdfBuffer = await response.arrayBuffer();
-      
-      // Use PDF.js or another library to extract text
-      // For this example, we'll use a simple placeholder
-      console.log(`PDF fetched successfully, size: ${pdfBuffer.byteLength} bytes`);
-      
-      // In a real implementation, you would extract text from the PDF here
-      // For now, we'll just return a placeholder message to simulate extraction
-      return `Extracted text from PDF (${pdfBuffer.byteLength} bytes)`;
-    } catch (error) {
-      console.error(`Error extracting text from PDF (attempt ${attempt + 1}):`, error);
-      attempt++;
-      
-      if (attempt >= retries) {
-        throw new Error(`Failed to extract text from PDF after ${retries} attempts: ${error.message}`);
-      }
-      
-      // Wait before retrying
-      await sleep(1000 * attempt);
-    }
-  }
-  
-  throw new Error("Failed to extract text from PDF");
-}
+console.log('Scrape job posting edge function loaded')
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    console.log('Handling OPTIONS request for CORS preflight');
+    return new Response(null, {
+      headers: corsHeaders,
+      status: 204,
+    });
   }
 
   try {
-    console.log('Starting job processing...');
+    console.log('Request received:', req.method)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
+
+    if (!supabaseUrl || !supabaseKey || !geminiApiKey) {
+      throw new Error('Missing required environment variables')
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey)
+    const jobRepository = new JobRepository(supabase)
+    const geminiService = new GeminiService(geminiApiKey)
+
+    // Get request payload
+    const payload = await req.json()
+    const { jobDescription, pdfUrl, is_public = true } = payload
+
+    console.log(`Processing job with public access: ${is_public}`)
     
-    // Parse request body
-    const body = await req.json();
-    console.log('Request body:', body);
-    
-    const { jobDescription, pdfUrl, is_public = true } = body;
-    
-    // Check if either jobDescription or pdfUrl is provided
     if (!jobDescription && !pdfUrl) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'No job description or PDF URL provided' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
+      throw new Error('Either jobDescription or pdfUrl must be provided')
     }
-    
-    // Initialize repository with admin privileges
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing Supabase URL or service role key');
-    }
-    
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const jobRepository = new JobRepository(supabase);
-    
-    // Process text content from either direct input or PDF
-    let textContent = jobDescription;
-    
-    if (pdfUrl && !textContent) {
-      console.log('Processing from PDF URL:', pdfUrl);
-      // Extract text from PDF
+
+    let originalText = jobDescription
+    let source = 'manual_entry'
+
+    // If a PDF URL is provided, try to extract text from it
+    if (pdfUrl) {
+      console.log('PDF URL provided, fetching content:', pdfUrl)
       try {
-        textContent = await extractTextFromPdf(pdfUrl);
+        const pdfResponse = await fetch(pdfUrl)
+        if (!pdfResponse.ok) {
+          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`)
+        }
+        // In a real application, you'd extract text from the PDF here
+        // For now, just use a placeholder
+        originalText = `Text extracted from PDF at ${pdfUrl}`
+        source = 'pdf_upload'
       } catch (error) {
-        console.error('Failed to extract text from PDF:', error);
-        return new Response(
-          JSON.stringify({ success: false, error: `Failed to process PDF: ${error.message}` }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        );
+        console.error('Error fetching PDF:', error)
+        throw new Error(`Failed to fetch PDF: ${error.message}`)
       }
     }
+
+    // Create job posting
+    console.log('Creating job posting in database')
+    const jobPosting = await jobRepository.createJobPosting(originalText, source, is_public)
     
-    // Process the job posting content
-    console.log(`Job description length: ${textContent.length}`);
-    
-    // Create job posting record
-    const jobId = await jobRepository.createJobPosting({
-      content: textContent,
-      description: textContent.substring(0, 500) + (textContent.length > 500 ? '...' : ''),
-      status: 'pending',
-      is_public: is_public,
-      pdf_path: pdfUrl || null
-    });
-    
-    console.log('Created job posting with ID:', jobId);
-    
-    // Process with rate limiting to avoid overwhelming the Gemini API
+    if (!jobPosting || !jobPosting.id) {
+      throw new Error('Failed to create job posting')
+    }
+
+    const jobId = jobPosting.id
+    console.log(`Job posting created with ID: ${jobId}`)
+
+    // Process keywords with Gemini
+    let keywords = []
     try {
-      console.log('Processing with Gemini API...');
-      await sleep(500); // Add a small delay
+      console.log('Extracting keywords with Gemini')
+      const extractedKeywords = await geminiService.extractKeywords(originalText)
+      keywords = sanitizeKeywords(extractedKeywords)
       
-      // Call Gemini API to analyze the job posting
-      const { parsedKeywords, error: geminiError } = await analyzeJobPostingWithGemini(textContent);
-      
-      if (geminiError) {
-        console.error('Error from Gemini API:', geminiError);
-        throw new Error(`Gemini API error: ${geminiError}`);
+      if (keywords.length === 0) {
+        console.log('No keywords extracted, falling back to basic extraction')
+        // Fallback to basic extraction if Gemini fails
+        const basicKeywords = originalText
+          .toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .split(/\s+/)
+          .filter(word => word.length > 3)
+          .map(word => ({ keyword: word, frequency: 1 }))
+          .slice(0, 20)
+        
+        keywords = basicKeywords
       }
       
-      // If Gemini returned keywords, use them
-      let keywords = [];
-      if (parsedKeywords && parsedKeywords.length > 0) {
-        console.log('Using keywords from Gemini:', parsedKeywords);
-        keywords = parsedKeywords;
-      } else {
-        // Fallback to basic keyword extraction
-        console.log('Falling back to basic keyword extraction');
-        keywords = extractKeywords(textContent);
-      }
+      // Store keywords
+      console.log(`Storing ${keywords.length} keywords`)
+      await jobRepository.storeKeywords(jobId, keywords, is_public)
       
-      console.log(`Extracted ${keywords.length} keywords`);
+      // Update job status
+      await jobRepository.updateJobStatus(jobId, 'completed')
       
-      // Save keywords to database
-      if (keywords.length > 0) {
-        await jobRepository.saveKeywords(jobId, keywords, is_public);
-        console.log('Keywords saved to database');
-      }
-      
-      // Update job status to processed
-      await jobRepository.updateJobStatus(jobId, 'processed');
-      console.log('Job status updated to processed');
-      
-      // Return response with job ID and keywords
       return new Response(
         JSON.stringify({
           success: true,
-          jobId,
-          keywords: keywords.map(k => ({ 
-            keyword: k.keyword, 
-            frequency: k.frequency || 1 
-          }))
+          jobId: jobId,
+          keywords: keywords,
+          message: 'Job posting processed successfully'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      )
     } catch (error) {
-      console.error('Error processing job:', error);
+      console.error('Error processing job:', error)
       
-      // Update job status to failed
-      await jobRepository.updateJobStatus(jobId, 'failed');
+      // Update job status to error
+      await jobRepository.updateJobStatus(jobId, 'error', error.message)
       
-      return new Response(
-        JSON.stringify({ success: false, error: `Processing failed: ${error.message}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+      throw error
     }
   } catch (error) {
-    console.error('Unhandled error:', error);
+    console.error('Edge function error:', error)
     
     return new Response(
-      JSON.stringify({ success: false, error: `Server error: ${error.message}` }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    );
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'An unknown error occurred'
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
+      }
+    )
   }
-});
+})

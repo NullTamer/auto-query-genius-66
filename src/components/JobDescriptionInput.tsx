@@ -152,7 +152,7 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         <Button
           onClick={onSubmit}
           className="w-full cyber-card bg-primary/20 hover:bg-primary/30 text-primary hover:text-primary-foreground hover:neon-glow transition-all"
-          disabled={!value.trim() && !isProcessing}
+          disabled={(!value.trim() && !isProcessing) || isProcessing}
         >
           {isProcessing ? "Processing..." : "Generate Boolean Query"}
         </Button>

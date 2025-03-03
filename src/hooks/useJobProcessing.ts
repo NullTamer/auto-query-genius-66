@@ -23,11 +23,20 @@ export const useJobProcessing = () => {
       
       console.log('Invoking edge function to process job description');
       
+      // Get authentication token if available
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authHeader = sessionData.session ? 
+        { 'Authorization': `Bearer ${sessionData.session.access_token}` } : {};
+      
       // Invoke the edge function with is_public set to true for anonymous access
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription,
           is_public: true // Set this to true for anonymous access
+        },
+        headers: {
+          ...authHeader,
+          'Content-Type': 'application/json'
         }
       });
       
@@ -86,6 +95,11 @@ export const useJobProcessing = () => {
 
       console.log('Uploading PDF file to storage:', filePath);
 
+      // Get authentication token if available
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authHeader = sessionData.session ? 
+        { 'Authorization': `Bearer ${sessionData.session.access_token}` } : {};
+
       // Upload the file to Supabase Storage using anonymous access
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('job_pdfs')
@@ -115,6 +129,10 @@ export const useJobProcessing = () => {
         body: { 
           pdfUrl: publicUrlData.publicUrl,
           is_public: true // Set this to true for anonymous access
+        },
+        headers: {
+          ...authHeader,
+          'Content-Type': 'application/json'
         }
       });
 
