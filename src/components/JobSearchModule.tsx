@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 interface JobSearchModuleProps {
   query: string;
@@ -26,7 +26,6 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchProvider, setSearchProvider] = useState<"linkedin" | "indeed" | "google">("google");
 
-  // Initialize search term with the query when it changes
   useEffect(() => {
     if (query && !searchTerm) {
       setSearchTerm(query.split(" AND ")[0]?.replace(/[()]/g, "") || "");
@@ -43,15 +42,11 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
     setIsSearching(true);
 
     try {
-      // Fetch job listings from a real API
       const response = await fetch(`https://serpapi.com/search.json?engine=google_jobs&q=${encodeURIComponent(searchQuery)}&api_key=mock_api_key`);
       
-      // If we can't use a real API, let's simulate the results but make them more dynamic
       if (!response.ok) {
-        // Simulate network delay
         await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // Create more realistic looking results based on the actual search term
         const terms = searchQuery.split(/\s+AND\s+|\s+OR\s+/).map(term => term.replace(/[()]/g, "").trim());
         const skills = terms.filter(term => term.length > 0).slice(0, 5);
         
@@ -85,7 +80,6 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
         setResults(mockResults);
         toast.success("Search completed");
       } else {
-        // Parse real API response
         const data = await response.json();
         const jobListings = data.jobs_results || [];
         
@@ -178,32 +172,24 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
           </div>
         </div>
         
-        <div className="flex flex-wrap gap-2 mb-4">
-          <Button
-            size="sm"
-            variant={searchProvider === "google" ? "default" : "outline"}
-            onClick={() => setSearchProvider("google")}
-            className="cyber-card"
-          >
+        <ToggleGroup 
+          type="single" 
+          value={searchProvider} 
+          onValueChange={(value) => {
+            if (value) setSearchProvider(value as "linkedin" | "indeed" | "google");
+          }}
+          className="flex flex-wrap gap-2 mb-4"
+        >
+          <ToggleGroupItem value="google" className="cyber-card">
             Google
-          </Button>
-          <Button
-            size="sm"
-            variant={searchProvider === "linkedin" ? "default" : "outline"}
-            onClick={() => setSearchProvider("linkedin")}
-            className="cyber-card"
-          >
+          </ToggleGroupItem>
+          <ToggleGroupItem value="linkedin" className="cyber-card">
             LinkedIn
-          </Button>
-          <Button
-            size="sm"
-            variant={searchProvider === "indeed" ? "default" : "outline"}
-            onClick={() => setSearchProvider("indeed")}
-            className="cyber-card"
-          >
+          </ToggleGroupItem>
+          <ToggleGroupItem value="indeed" className="cyber-card">
             Indeed
-          </Button>
-        </div>
+          </ToggleGroupItem>
+        </ToggleGroup>
         
         {results.length > 0 && (
           <ScrollArea className="h-[300px] w-full">
