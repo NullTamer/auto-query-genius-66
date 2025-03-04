@@ -66,7 +66,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                 </div>
               )}
             </div>
-            <p className="mt-2 text-sm line-clamp-3">{result.snippet}</p>
+            <p className="mt-2 text-sm line-clamp-3">{result.snippet || result.description}</p>
           </div>
         ))}
       </div>
