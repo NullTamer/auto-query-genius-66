@@ -1,6 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// CORS headers for cross-origin requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -12,147 +13,253 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Parse request body
+  let searchTerm: string;
+  let provider: string;
+  
   try {
-    const { searchTerm, provider } = await req.json();
-    console.log(`Searching for "${searchTerm}" on ${provider}`);
+    const { searchTerm: term, provider: prov } = await req.json();
+    searchTerm = term;
+    provider = prov;
+  } catch (e) {
+    console.error("Error parsing request:", e);
+    return new Response(
+      JSON.stringify({ success: false, error: "Invalid request" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    );
+  }
 
-    // Sanitize the search term for API requests
-    const sanitizedSearchTerm = encodeURIComponent(searchTerm);
-    let results = [];
+  console.log(`Searching for "${searchTerm}" on ${provider}`);
 
-    // Get current date for "posted X days ago" calculation
-    const now = new Date();
-
+  try {
+    // Get search results based on provider
+    let results;
+    
     switch (provider) {
-      case "linkedin":
-        // LinkedIn-specific results (more realistic for this platform)
-        results = [
-          {
-            title: `${searchTerm.split(' ')[0]} Specialist`,
-            company: "LinkedIn Talent Solutions",
-            location: "Remote / San Francisco, CA",
-            date: `Posted ${Math.floor(Math.random() * 7) + 1} days ago`,
-            url: `https://www.linkedin.com/jobs/view/${Math.floor(Math.random() * 10000000)}`,
-            snippet: `Our client is seeking a talented professional with expertise in ${searchTerm}. This role offers hybrid work arrangements and competitive compensation.`
-          },
-          {
-            title: `Senior ${searchTerm.split(' ')[0]} Professional`,
-            company: "TechRecruit Partners",
-            location: "New York / Remote",
-            date: `Posted ${Math.floor(Math.random() * 3) + 1} days ago`,
-            url: `https://www.linkedin.com/jobs/view/${Math.floor(Math.random() * 10000000)}`,
-            snippet: `Join a Fortune 500 company as their new ${searchTerm} expert. Required: 5+ years experience with similar technologies and a bachelor's degree.`
-          },
-          {
-            title: `${searchTerm.split(' ')[0]} Team Lead`,
-            company: "Global Innovations Inc",
-            location: "Boston, MA",
-            date: "Posted today",
-            url: `https://www.linkedin.com/jobs/view/${Math.floor(Math.random() * 10000000)}`,
-            snippet: `Lead a team of professionals working on cutting-edge ${searchTerm} projects. Must have leadership experience and strong technical background.`
-          },
-          {
-            title: `${searchTerm.split(' ')[0]} Consultant`,
-            company: "Professional Services Group",
-            location: "Chicago, IL / Hybrid",
-            date: `Posted ${Math.floor(Math.random() * 5) + 1} days ago`,
-            url: `https://www.linkedin.com/jobs/view/${Math.floor(Math.random() * 10000000)}`,
-            snippet: `Consulting opportunity for experienced ${searchTerm} professionals. Client-facing role with travel requirements and premium compensation.`
-          }
-        ];
+      case 'google':
+        results = await searchGoogle(searchTerm);
         break;
-
-      case "indeed":
-        // Indeed-specific results (styled to match Indeed listings)
-        results = [
-          {
-            title: `${searchTerm.split(' ')[0]} Developer`,
-            company: "Indeed Prime Employers",
-            location: "Austin, TX",
-            date: `Posted ${Math.floor(Math.random() * 10) + 1} days ago`,
-            url: `https://www.indeed.com/viewjob?jk=${Math.random().toString(36).substring(2, 10)}`,
-            snippet: `$85,000 - $120,000 a year. Full-time position working with ${searchTerm} technologies. Benefits include health insurance, 401(k), and flexible PTO.`
-          },
-          {
-            title: `${searchTerm.split(' ')[0]} Associate`,
-            company: "Staffing Solutions Inc",
-            location: "Dallas, TX / Remote",
-            date: `Posted ${Math.floor(Math.random() * 5) + 1} days ago`,
-            url: `https://www.indeed.com/viewjob?jk=${Math.random().toString(36).substring(2, 10)}`,
-            snippet: `Entry-level opportunity in ${searchTerm}. Training provided. Requires bachelor's degree and strong analytical skills. Growing company with advancement opportunities.`
-          },
-          {
-            title: `${searchTerm.split(' ')[0]} Engineer`,
-            company: "TechWorks Solutions",
-            location: "Denver, CO",
-            date: "Posted yesterday",
-            url: `https://www.indeed.com/viewjob?jk=${Math.random().toString(36).substring(2, 10)}`,
-            snippet: `Full Stack Developer with ${searchTerm} expertise. Tech stack includes React, Node.js, and AWS. Agile environment with remote work options.`
-          },
-          {
-            title: `Contract ${searchTerm.split(' ')[0]} Specialist`,
-            company: "Contractor Connect",
-            location: "Seattle, WA",
-            date: `Posted ${Math.floor(Math.random() * 14) + 1} days ago`,
-            url: `https://www.indeed.com/viewjob?jk=${Math.random().toString(36).substring(2, 10)}`,
-            snippet: `6-month contract role with possibility of extension. ${searchTerm} project implementation for major healthcare client. $65-80/hour DOE.`
-          }
-        ];
+      case 'linkedin':
+        results = await searchLinkedIn(searchTerm);
         break;
-
-      case "google":
+      case 'indeed':
+        results = await searchIndeed(searchTerm);
+        break;
       default:
-        // Google Jobs-specific results (diverse listings as Google aggregates from multiple sources)
-        results = [
-          {
-            title: `${searchTerm.split(' ')[0]} Expert`,
-            company: "JobSearch Partners",
-            location: "Remote / Multiple Locations",
-            date: `Posted ${Math.floor(Math.random() * 8) + 1} days ago`,
-            url: `https://www.google.com/search?q=${sanitizedSearchTerm}+jobs`,
-            snippet: `Seeking experienced professional with skills in ${searchTerm}. This role offers flexible work arrangements, competitive salary, and advancement opportunities.`
-          },
-          {
-            title: `Junior ${searchTerm.split(' ')[0]} Developer`,
-            company: "Tech Innovations Lab",
-            location: "San Jose, CA",
-            date: `Posted ${Math.floor(Math.random() * 3) + 1} days ago`,
-            url: `https://www.google.com/search?q=${sanitizedSearchTerm}+jobs`,
-            snippet: `Entry-level opportunity to work with ${searchTerm} technologies in a fast-paced startup environment. Great for recent graduates with relevant projects.`
-          },
-          {
-            title: `${searchTerm.split(' ')[0]} Manager`,
-            company: "Enterprise Solutions Inc",
-            location: "Atlanta, GA",
-            date: "Posted today",
-            url: `https://www.google.com/search?q=${sanitizedSearchTerm}+jobs`,
-            snippet: `Lead our ${searchTerm} division and oversee cross-functional teams. Requires 7+ years of experience and proven leadership abilities.`
-          },
-          {
-            title: `${searchTerm.split(' ')[0]} Research Scientist`,
-            company: "Advanced Research Institute",
-            location: "Cambridge, MA",
-            date: `Posted ${Math.floor(Math.random() * 5) + 1} days ago`,
-            url: `https://www.google.com/search?q=${sanitizedSearchTerm}+jobs`,
-            snippet: `PhD required. Conduct cutting-edge research in ${searchTerm}. Publication history and academic background preferred. Collaborative research environment.`
-          }
-        ];
+        return new Response(
+          JSON.stringify({ success: false, error: "Invalid provider" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        );
     }
 
     return new Response(
       JSON.stringify({ success: true, results }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
   } catch (error) {
-    console.error("Error fetching job listings:", error);
+    console.error(`Error fetching results:`, error);
+    
+    // Return fallback search results in case of error
+    const fallbackResults = generateFallbackResults(provider, searchTerm);
     
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ 
+        success: true, 
+        results: fallbackResults,
+        warning: "Using fallback results due to API error"
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
+
+async function searchGoogle(searchTerm: string) {
+  // Using a simple regex-based approach instead of DOM parsing
+  try {
+    const response = await fetch(`https://www.google.com/search?q=${encodeURIComponent(searchTerm)}+jobs&gl=us`);
+    if (!response.ok) throw new Error(`Google search failed: ${response.status}`);
+    
+    const html = await response.text();
+    
+    // Extract job listings with regex
+    // This is a simplified approach and may need adjustments based on Google's actual HTML structure
+    const jobListings = [];
+    const titleRegex = /<h3[^>]*>([^<]+)<\/h3>/g;
+    const companyRegex = /<span[^>]*class="[^"]*company[^"]*"[^>]*>([^<]+)<\/span>/g;
+    
+    let titleMatch;
+    let companyMatch;
+    let index = 0;
+    
+    while ((titleMatch = titleRegex.exec(html)) !== null && index < 10) {
+      companyMatch = companyRegex.exec(html);
+      
+      jobListings.push({
+        id: `google-${index}`,
+        title: titleMatch[1].trim(),
+        company: companyMatch ? companyMatch[1].trim() : "Company not specified",
+        location: "Location varies",
+        url: `https://www.google.com/search?q=${encodeURIComponent(searchTerm)}+jobs`,
+        description: `Job matching "${searchTerm}" on Google Jobs`,
+        source: "Google Jobs"
+      });
+      
+      index++;
+    }
+    
+    return jobListings.length > 0 ? jobListings : generateFallbackResults('google', searchTerm);
+  } catch (error) {
+    console.error("Error in Google search:", error);
+    return generateFallbackResults('google', searchTerm);
+  }
+}
+
+async function searchLinkedIn(searchTerm: string) {
+  try {
+    const response = await fetch(`https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(searchTerm)}`);
+    if (!response.ok) throw new Error(`LinkedIn search failed: ${response.status}`);
+    
+    const html = await response.text();
+    
+    // Extract job listings with regex
+    const jobListings = [];
+    const jobCardRegex = /<div[^>]*class="[^"]*job-search-card[^"]*"[^>]*>([\s\S]*?)<\/div><\/div><\/div>/g;
+    const titleRegex = /<h3[^>]*class="[^"]*base-search-card__title[^"]*"[^>]*>([^<]+)<\/h3>/;
+    const companyRegex = /<h4[^>]*class="[^"]*base-search-card__subtitle[^"]*"[^>]*>([^<]+)<\/h4>/;
+    const locationRegex = /<span[^>]*class="[^"]*job-search-card__location[^"]*"[^>]*>([^<]+)<\/span>/;
+    
+    let match;
+    let index = 0;
+    
+    while ((match = jobCardRegex.exec(html)) !== null && index < 10) {
+      const jobCard = match[0];
+      const title = titleRegex.exec(jobCard)?.[1]?.trim() || "Job Title";
+      const company = companyRegex.exec(jobCard)?.[1]?.trim() || "Company";
+      const location = locationRegex.exec(jobCard)?.[1]?.trim() || "Location";
+      
+      jobListings.push({
+        id: `linkedin-${index}`,
+        title,
+        company,
+        location,
+        url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(searchTerm)}`,
+        description: `${title} at ${company}`,
+        source: "LinkedIn"
+      });
+      
+      index++;
+    }
+    
+    return jobListings.length > 0 ? jobListings : generateFallbackResults('linkedin', searchTerm);
+  } catch (error) {
+    console.error("Error in LinkedIn search:", error);
+    return generateFallbackResults('linkedin', searchTerm);
+  }
+}
+
+async function searchIndeed(searchTerm: string) {
+  try {
+    const response = await fetch(`https://www.indeed.com/jobs?q=${encodeURIComponent(searchTerm)}`);
+    if (!response.ok) throw new Error(`Indeed search failed: ${response.status}`);
+    
+    const html = await response.text();
+    
+    // Extract job listings with regex
+    const jobListings = [];
+    const jobCardRegex = /<div[^>]*class="[^"]*job_seen_beacon[^"]*"[^>]*>([\s\S]*?)<\/div><\/div><\/div>/g;
+    const titleRegex = /<span[^>]*id="jobTitle[^"]*"[^>]*>([^<]+)<\/span>/;
+    const companyRegex = /<span[^>]*class="[^"]*companyName[^"]*"[^>]*>([^<]+)<\/span>/;
+    const locationRegex = /<div[^>]*class="[^"]*companyLocation[^"]*"[^>]*>([^<]+)<\/div>/;
+    
+    let match;
+    let index = 0;
+    
+    while ((match = jobCardRegex.exec(html)) !== null && index < 10) {
+      const jobCard = match[0];
+      const title = titleRegex.exec(jobCard)?.[1]?.trim() || "Job Title";
+      const company = companyRegex.exec(jobCard)?.[1]?.trim() || "Company";
+      const location = locationRegex.exec(jobCard)?.[1]?.trim() || "Location";
+      
+      jobListings.push({
+        id: `indeed-${index}`,
+        title,
+        company,
+        location,
+        url: `https://www.indeed.com/jobs?q=${encodeURIComponent(searchTerm)}`,
+        description: `${title} at ${company}`,
+        source: "Indeed"
+      });
+      
+      index++;
+    }
+    
+    return jobListings.length > 0 ? jobListings : generateFallbackResults('indeed', searchTerm);
+  } catch (error) {
+    console.error("Error in Indeed search:", error);
+    return generateFallbackResults('indeed', searchTerm);
+  }
+}
+
+function generateFallbackResults(provider: string, searchTerm: string) {
+  const sources = {
+    'google': 'Google Jobs',
+    'linkedin': 'LinkedIn',
+    'indeed': 'Indeed'
+  };
+  
+  const source = sources[provider as keyof typeof sources] || provider;
+  const results = [];
+  
+  const titles = [
+    `${searchTerm} Developer`,
+    `Senior ${searchTerm} Engineer`,
+    `${searchTerm} Specialist`,
+    `${searchTerm} Analyst`,
+    `${searchTerm} Team Lead`,
+    `${searchTerm} Consultant`,
+    `${searchTerm} Manager`,
+    `Junior ${searchTerm} Developer`,
+    `${searchTerm} Administrator`,
+    `${searchTerm} Solutions Architect`,
+  ];
+  
+  const companies = [
+    'TechCorp, Inc.',
+    'Global Software Ltd',
+    'Quantum Solutions',
+    'Cyber Systems',
+    'Digital Innovations',
+    'NextGen Technologies',
+    'Apex Computing',
+    'Future Systems',
+    'Omni Tech Group',
+    'Prime Digital Services',
+  ];
+  
+  const locations = [
+    'San Francisco, CA',
+    'New York, NY',
+    'Austin, TX',
+    'Seattle, WA',
+    'Boston, MA',
+    'Chicago, IL',
+    'Denver, CO',
+    'Atlanta, GA',
+    'Remote',
+    'Hybrid - Los Angeles, CA',
+  ];
+  
+  for (let i = 0; i < 10; i++) {
+    results.push({
+      id: `${provider}-${i}`,
+      title: titles[i],
+      company: companies[i],
+      location: locations[i],
+      url: `https://www.example.com/jobs?q=${encodeURIComponent(searchTerm)}`,
+      description: `This is a fallback result for ${titles[i]} at ${companies[i]}. This position requires expertise in ${searchTerm}.`,
+      source
+    });
+  }
+  
+  return results;
+}
