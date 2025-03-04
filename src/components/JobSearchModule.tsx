@@ -25,7 +25,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
   keywords,
   initialProvider 
 }) => {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(query || "");
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -34,6 +34,13 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
   const navigate = useNavigate();
   const isSearchPage = location.pathname === "/search";
 
+  // Initialize searchTerm with query when component mounts or query changes
+  useEffect(() => {
+    if (query) {
+      setSearchTerm(query);
+    }
+  }, [query]);
+
   // If we're on the search page, get query and provider from URL
   useEffect(() => {
     if (isSearchPage) {
@@ -41,7 +48,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
       const urlQuery = searchParams.get("q");
       const urlProvider = searchParams.get("provider") as SearchProvider | null;
       
-      if (urlQuery) {
+      if (urlQuery && urlQuery !== searchTerm) {
         setSearchTerm(urlQuery);
       }
       
@@ -50,28 +57,40 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
       }
       
       // Auto-search when navigating to search page with a query
-      if (urlQuery) {
-        handleSearch(urlQuery);
+      if (urlQuery && !results.length) {
+        handleSearch(urlQuery, urlProvider || undefined);
       }
     }
   }, [isSearchPage, location.search]);
 
   // Update search term when selected terms change
   useEffect(() => {
-    setSearchTerm(selectedTerms.join(" "));
+    if (selectedTerms.length > 0) {
+      setSearchTerm(selectedTerms.join(" "));
+    }
   }, [selectedTerms]);
 
-  // Update search parameters in URL when provider changes on the search page
+  // Update search parameters in URL when provider or searchTerm changes on the search page
   useEffect(() => {
     if (isSearchPage && searchTerm) {
       const searchParams = new URLSearchParams(location.search);
-      const currentProvider = searchParams.get("provider");
+      let needsUpdate = false;
       
-      if (currentProvider !== searchProvider) {
-        navigate(`/search?q=${encodeURIComponent(searchTerm)}&provider=${searchProvider}`, { replace: true });
+      if (searchParams.get("q") !== searchTerm) {
+        searchParams.set("q", searchTerm);
+        needsUpdate = true;
+      }
+      
+      if (searchParams.get("provider") !== searchProvider) {
+        searchParams.set("provider", searchProvider);
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate) {
+        navigate(`/search?${searchParams.toString()}`, { replace: true });
       }
     }
-  }, [searchProvider, isSearchPage, searchTerm]);
+  }, [searchProvider, searchTerm, isSearchPage, navigate, location.search]);
 
   // Handle term selection/deselection
   const handleTermToggle = (term: string) => {

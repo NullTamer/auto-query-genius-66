@@ -17,7 +17,7 @@ const Profile = () => {
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Fetch user data
+  // Fetch user data and search history
   useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -29,14 +29,39 @@ const Profile = () => {
       
       setUser(session.user);
       
-      // Fetch search history (mock data for now)
-      setSearchHistory([
-        { id: 1, query: "React developer", date: "2023-05-15", results: 42 },
-        { id: 2, query: "JavaScript engineer", date: "2023-05-10", results: 38 },
-        { id: 3, query: "Full-stack developer", date: "2023-05-05", results: 56 },
-        { id: 4, query: "Frontend specialist", date: "2023-04-28", results: 31 },
-        { id: 5, query: "React Native developer", date: "2023-04-20", results: 27 },
-      ]);
+      // Fetch real search history if logged in
+      try {
+        const { data, error } = await supabase
+          .from('search_history')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(10);
+          
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          setSearchHistory(data);
+        } else {
+          // Fallback to mock data if no history exists
+          setSearchHistory([
+            { id: 1, query: "React developer", provider: "google", results_count: 42, created_at: "2023-05-15" },
+            { id: 2, query: "JavaScript engineer", provider: "linkedin", results_count: 38, created_at: "2023-05-10" },
+            { id: 3, query: "Full-stack developer", provider: "indeed", results_count: 56, created_at: "2023-05-05" },
+            { id: 4, query: "Frontend specialist", provider: "google", results_count: 31, created_at: "2023-04-28" },
+            { id: 5, query: "React Native developer", provider: "linkedin", results_count: 27, created_at: "2023-04-20" },
+          ]);
+        }
+      } catch (error) {
+        console.error("Error fetching search history:", error);
+        // Use mock data on error
+        setSearchHistory([
+          { id: 1, query: "React developer", provider: "google", results_count: 42, created_at: "2023-05-15" },
+          { id: 2, query: "JavaScript engineer", provider: "linkedin", results_count: 38, created_at: "2023-05-10" },
+          { id: 3, query: "Full-stack developer", provider: "indeed", results_count: 56, created_at: "2023-05-05" },
+          { id: 4, query: "Frontend specialist", provider: "google", results_count: 31, created_at: "2023-04-28" },
+          { id: 5, query: "React Native developer", provider: "linkedin", results_count: 27, created_at: "2023-04-20" },
+        ]);
+      }
       
       setIsLoading(false);
     };
@@ -50,9 +75,9 @@ const Profile = () => {
     toast.success("Successfully signed out");
   };
 
-  const runSearch = (query: string) => {
+  const runSearch = (query: string, provider: string = "google") => {
     toast.info(`Searching for: ${query}`);
-    navigate(`/?q=${encodeURIComponent(query)}`);
+    navigate(`/search?q=${encodeURIComponent(query)}&provider=${provider}`);
   };
 
   if (isLoading) {
@@ -98,6 +123,7 @@ const Profile = () => {
                   variant="outline" 
                   size="sm" 
                   className="cyber-card"
+                  onClick={() => navigate("/settings")}
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
@@ -133,17 +159,19 @@ const Profile = () => {
                           <div className="flex items-center">
                             <button 
                               className="text-primary font-medium hover:underline"
-                              onClick={() => runSearch(item.query)}
+                              onClick={() => runSearch(item.query, item.provider)}
                             >
                               {item.query}
                             </button>
                             <span className="ml-2 text-sm text-muted-foreground">
-                              ({item.results} results)
+                              ({item.results_count || 0} results)
                             </span>
                           </div>
                           <div className="flex items-center text-xs text-muted-foreground">
                             <Clock className="mr-1 h-3 w-3" />
-                            {item.date}
+                            {typeof item.created_at === 'string' 
+                              ? item.created_at 
+                              : new Date(item.created_at).toLocaleDateString()}
                           </div>
                         </div>
                       </div>
