@@ -1,7 +1,7 @@
 
 import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, Loader2, MapPin, Calendar } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, Calendar, Building } from "lucide-react";
 import { SearchResult } from "./types";
 
 interface JobResultsListProps {
@@ -22,7 +22,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
   if (results.length === 0) {
     return (
       <div className="text-center p-6 text-muted-foreground">
-        <p>No search results yet. Click "Search" to find matching jobs.</p>
+        <p>Select query terms above and click "Search" to find matching jobs.</p>
         <p className="mt-2 text-sm">Or click "External" to search on job boards directly.</p>
       </div>
     );
@@ -48,8 +48,11 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                 <ExternalLink size={16} />
               </a>
             </div>
-            <div className="text-base font-medium mt-1">{result.company}</div>
-            <div className="flex items-center text-sm text-muted-foreground mt-1 flex-wrap">
+            <div className="flex items-center text-base font-medium mt-1">
+              <Building size={14} className="mr-1" />
+              <span>{result.company}</span>
+            </div>
+            <div className="flex items-center text-sm text-muted-foreground mt-1 flex-wrap gap-3">
               {result.location && (
                 <div className="flex items-center">
                   <MapPin size={14} className="mr-1" />
@@ -57,13 +60,13 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                 </div>
               )}
               {result.date && (
-                <div className="flex items-center ml-3">
+                <div className="flex items-center">
                   <Calendar size={14} className="mr-1" />
                   <span>{result.date}</span>
                 </div>
               )}
             </div>
-            <p className="mt-2 text-sm">{result.snippet}</p>
+            <p className="mt-2 text-sm line-clamp-3">{result.snippet}</p>
           </div>
         ))}
       </div>

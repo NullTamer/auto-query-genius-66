@@ -7,6 +7,7 @@ import SearchForm from "./job-search/SearchForm";
 import ProviderToggle from "./job-search/ProviderToggle";
 import JobResultsList from "./job-search/JobResultsList";
 import ExternalSearchButton from "./job-search/ExternalSearchButton";
+import QueryTermSelector from "./job-search/QueryTermSelector";
 import { SearchProvider, SearchResult } from "./job-search/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -16,32 +17,28 @@ interface JobSearchModuleProps {
 
 const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchProvider, setSearchProvider] = useState<SearchProvider>("google");
 
-  // Enhanced autopopulation to better extract keywords from the boolean query
+  // Update search term when selected terms change
   useEffect(() => {
-    if (query && !searchTerm) {
-      // Extract meaningful keywords from the query
-      // Remove boolean operators, parentheses, and take the most relevant terms
-      const cleanedQuery = query
-        .replace(/\([^)]*\)/g, ' ') // Remove content inside parentheses
-        .replace(/\(|\)/g, '') // Remove parentheses
-        .replace(/ AND | OR /gi, ' ') // Remove boolean operators
-        .trim()
-        .split(/\s+/)
-        .filter(term => term.length > 2 && !term.match(/^(and|or)$/i)) // Filter out small terms and standalone operators
-        .slice(0, 5) // Take first 5 meaningful terms
-        .join(' ');
-      
-      setSearchTerm(cleanedQuery);
-    }
-  }, [query, searchTerm]);
+    setSearchTerm(selectedTerms.join(" "));
+  }, [selectedTerms]);
+
+  // Handle term selection/deselection
+  const handleTermToggle = (term: string) => {
+    setSelectedTerms(prev => 
+      prev.includes(term)
+        ? prev.filter(t => t !== term)
+        : [...prev, term]
+    );
+  };
 
   const handleSearch = async () => {
-    if (!query && !searchTerm) {
-      toast.error("Please generate a boolean query first or enter a search term");
+    if (!searchTerm && selectedTerms.length === 0) {
+      toast.error("Please select at least one search term");
       return;
     }
 
@@ -89,6 +86,12 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
       </div>
       
       <div className="space-y-4">
+        <QueryTermSelector 
+          query={query}
+          selectedTerms={selectedTerms}
+          onTermToggle={handleTermToggle}
+        />
+        
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-grow">
             <SearchForm
