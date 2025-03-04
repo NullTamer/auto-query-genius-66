@@ -18,7 +18,7 @@ const SearchForm: React.FC<SearchFormProps> = ({
   onSearch,
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row gap-2">
+    <div className="flex flex-col sm:flex-row gap-2 w-full">
       <Input
         value={searchTerm}
         onChange={(e) => onSearchTermChange(e.target.value)}
@@ -41,7 +41,10 @@ const SearchForm: React.FC<SearchFormProps> = ({
             Searching
           </>
         ) : (
-          "Search"
+          <>
+            <Search className="mr-2 h-4 w-4" />
+            Search
+          </>
         )}
       </Button>
     </div>

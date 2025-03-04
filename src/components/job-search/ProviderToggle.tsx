@@ -1,8 +1,7 @@
 
 import React from "react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-
-type SearchProvider = "linkedin" | "indeed" | "google";
+import { SearchProvider } from "./types";
 
 interface ProviderToggleProps {
   searchProvider: SearchProvider;

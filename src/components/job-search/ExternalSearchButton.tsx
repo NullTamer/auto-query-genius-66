@@ -3,8 +3,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-
-type SearchProvider = "linkedin" | "indeed" | "google";
+import { SearchProvider } from "./types";
 
 interface ExternalSearchButtonProps {
   searchTerm: string;

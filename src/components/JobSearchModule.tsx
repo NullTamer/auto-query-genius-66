@@ -107,12 +107,14 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
       
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-2">
-          <SearchForm
-            searchTerm={searchTerm}
-            isSearching={isSearching}
-            onSearchTermChange={setSearchTerm}
-            onSearch={handleSearch}
-          />
+          <div className="flex-grow">
+            <SearchForm
+              searchTerm={searchTerm}
+              isSearching={isSearching}
+              onSearchTermChange={setSearchTerm}
+              onSearch={handleSearch}
+            />
+          </div>
           <ExternalSearchButton
             searchTerm={searchTerm}
             query={query}
