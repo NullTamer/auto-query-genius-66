@@ -18,21 +18,25 @@ const QueryTermSelector: React.FC<QueryTermSelectorProps> = ({
   const parseQueryTerms = (query: string): string[] => {
     if (!query) return [];
     
-    // Remove parentheses and boolean operators
-    const cleaned = query
-      .replace(/\([^)]*\)/g, ' ') // Remove content inside parentheses
-      .replace(/\(|\)/g, '') // Remove parentheses
-      .replace(/ AND | OR /gi, ' '); // Remove boolean operators
+    // Create a copy of the query to work with
+    let queryText = query;
     
-    // Extract unique terms
-    return Array.from(
-      new Set(
-        cleaned
-          .split(/\s+/)
-          .filter(term => term.length > 2 && !term.match(/^(and|or)$/i))
-          .map(term => term.trim())
-      )
-    );
+    // Remove all parentheses
+    queryText = queryText.replace(/\(/g, ' ').replace(/\)/g, ' ');
+    
+    // Replace boolean operators with spaces
+    queryText = queryText.replace(/ AND | OR /gi, ' ');
+    
+    // Split by spaces and filter
+    const terms = queryText
+      .split(/\s+/)
+      .filter(term => term.length > 2) // Filter out short terms
+      .filter(term => !term.match(/^(and|or)$/i)) // Filter out standalone AND/OR
+      .map(term => term.trim())
+      .filter(Boolean); // Remove empty strings
+    
+    // Return unique terms
+    return Array.from(new Set(terms));
   };
 
   const queryTerms = parseQueryTerms(query);
