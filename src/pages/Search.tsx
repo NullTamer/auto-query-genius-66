@@ -5,11 +5,13 @@ import NavigationPane from "@/components/layout/NavigationPane";
 import { Search as SearchIcon } from "lucide-react";
 import JobSearchModule from "@/components/JobSearchModule";
 import { useLocation } from "react-router-dom";
+import { SearchProvider } from "@/components/job-search/types";
 
 const Search = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const searchQuery = searchParams.get("q") || "";
+  const provider = (searchParams.get("provider") as SearchProvider) || "google";
 
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
@@ -28,7 +30,7 @@ const Search = () => {
           </p>
           
           {searchQuery ? (
-            <JobSearchModule query={searchQuery} keywords={[]} />
+            <JobSearchModule query={searchQuery} keywords={[]} initialProvider={provider} />
           ) : (
             <p className="text-center py-6 text-muted-foreground">
               Start a search from the home page or use the navigation to run a new search.

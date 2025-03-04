@@ -12,20 +12,26 @@ import { SearchProvider, SearchResult } from "./job-search/types";
 import { supabase } from "@/integrations/supabase/client";
 import { Keyword } from "@/hooks/useKeywords";
 import RecommendedSearchModule from "./recommended-search/RecommendedSearchModule";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 interface JobSearchModuleProps {
   query: string;
   keywords: Keyword[];
+  initialProvider?: SearchProvider;
 }
 
-const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) => {
+const JobSearchModule: React.FC<JobSearchModuleProps> = ({ 
+  query, 
+  keywords,
+  initialProvider 
+}) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [searchProvider, setSearchProvider] = useState<SearchProvider>("google");
+  const [searchProvider, setSearchProvider] = useState<SearchProvider>(initialProvider || "google");
   const location = useLocation();
+  const navigate = useNavigate();
   const isSearchPage = location.pathname === "/search";
 
   // If we're on the search page, get query and provider from URL
@@ -55,6 +61,18 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
     setSearchTerm(selectedTerms.join(" "));
   }, [selectedTerms]);
 
+  // Update search parameters in URL when provider changes on the search page
+  useEffect(() => {
+    if (isSearchPage && searchTerm) {
+      const searchParams = new URLSearchParams(location.search);
+      const currentProvider = searchParams.get("provider");
+      
+      if (currentProvider !== searchProvider) {
+        navigate(`/search?q=${encodeURIComponent(searchTerm)}&provider=${searchProvider}`, { replace: true });
+      }
+    }
+  }, [searchProvider, isSearchPage, searchTerm]);
+
   // Handle term selection/deselection
   const handleTermToggle = (term: string) => {
     setSelectedTerms(prev => 
@@ -70,8 +88,19 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
     toast.success(`Applied search combination with ${terms.length} terms`);
   };
 
-  const handleSearch = async (termOverride?: string) => {
+  // Handle provider change
+  const handleProviderChange = (provider: SearchProvider) => {
+    setSearchProvider(provider);
+    
+    // If we already have results and are on the search page, search again with new provider
+    if (results.length > 0 && isSearchPage) {
+      handleSearch(searchTerm, provider);
+    }
+  };
+
+  const handleSearch = async (termOverride?: string, providerOverride?: SearchProvider) => {
     const finalSearchTerm = termOverride || searchTerm || query;
+    const finalProvider = providerOverride || searchProvider;
     
     if (!finalSearchTerm && selectedTerms.length === 0) {
       toast.error("Please select at least one search term");
@@ -82,13 +111,13 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
     setResults([]);
 
     try {
-      console.log(`Searching for "${finalSearchTerm}" on ${searchProvider}`);
+      console.log(`Searching for "${finalSearchTerm}" on ${finalProvider}`);
       
       // Call the edge function to get job listings with the correct param name
       const { data, error } = await supabase.functions.invoke('fetch-job-listings', {
         body: { 
           searchTerm: finalSearchTerm,
-          provider: searchProvider
+          provider: finalProvider
         }
       });
       
@@ -102,7 +131,23 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
       }
       
       setResults(data.results);
-      toast.success(`Found ${data.results.length} job listings on ${searchProvider}`);
+      
+      // Save to search history if we're logged in
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await supabase.from('search_history').insert({
+            user_id: session.user.id,
+            query: finalSearchTerm,
+            provider: finalProvider,
+            results_count: data.results.length
+          });
+        }
+      } catch (historyError) {
+        console.error("Failed to save search history:", historyError);
+      }
+      
+      toast.success(`Found ${data.results.length} job listings on ${finalProvider}`);
     } catch (error) {
       console.error("Search error:", error);
       toast.error("Failed to search for jobs");
@@ -157,7 +202,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
           
           <ProviderToggle
             searchProvider={searchProvider}
-            onProviderChange={setSearchProvider}
+            onProviderChange={handleProviderChange}
           />
           
           <JobResultsList
