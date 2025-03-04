@@ -28,14 +28,23 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
   const location = useLocation();
   const isSearchPage = location.pathname === "/search";
 
-  // If we're on the search page, get query from URL
+  // If we're on the search page, get query and provider from URL
   useEffect(() => {
     if (isSearchPage) {
       const searchParams = new URLSearchParams(location.search);
       const urlQuery = searchParams.get("q");
+      const urlProvider = searchParams.get("provider") as SearchProvider | null;
+      
       if (urlQuery) {
         setSearchTerm(urlQuery);
-        // Auto-search when navigating to search page with a query
+      }
+      
+      if (urlProvider && (urlProvider === "google" || urlProvider === "linkedin" || urlProvider === "indeed")) {
+        setSearchProvider(urlProvider);
+      }
+      
+      // Auto-search when navigating to search page with a query
+      if (urlQuery) {
         handleSearch(urlQuery);
       }
     }
@@ -136,6 +145,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
                 onSearchTermChange={setSearchTerm}
                 onSearch={() => handleSearch()}
                 navigateToSearch={!isSearchPage}
+                searchProvider={searchProvider}
               />
             </div>
             <ExternalSearchButton

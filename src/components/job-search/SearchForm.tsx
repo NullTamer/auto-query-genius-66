@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { SearchProvider } from "./types";
 
 interface SearchFormProps {
   searchTerm: string;
@@ -11,6 +12,7 @@ interface SearchFormProps {
   onSearchTermChange: (value: string) => void;
   onSearch: () => void;
   navigateToSearch?: boolean;
+  searchProvider?: SearchProvider;
 }
 
 const SearchForm: React.FC<SearchFormProps> = ({
@@ -19,12 +21,13 @@ const SearchForm: React.FC<SearchFormProps> = ({
   onSearchTermChange,
   onSearch,
   navigateToSearch = false,
+  searchProvider = "google",
 }) => {
   const navigate = useNavigate();
 
   const handleSearch = () => {
     if (navigateToSearch && searchTerm) {
-      navigate(`/search?q=${encodeURIComponent(searchTerm)}`);
+      navigate(`/search?q=${encodeURIComponent(searchTerm)}&provider=${searchProvider}`);
     } else {
       onSearch();
     }

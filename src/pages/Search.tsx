@@ -8,7 +8,8 @@ import { useLocation } from "react-router-dom";
 
 const Search = () => {
   const location = useLocation();
-  const searchQuery = new URLSearchParams(location.search).get("q") || "";
+  const searchParams = new URLSearchParams(location.search);
+  const searchQuery = searchParams.get("q") || "";
 
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
