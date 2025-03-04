@@ -1,23 +1,30 @@
-
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Search, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import SearchForm from "./job-search/SearchForm";
-import ProviderToggle from "./job-search/ProviderToggle";
-import JobResultsList from "./job-search/JobResultsList";
-import ExternalSearchButton from "./job-search/ExternalSearchButton";
-import { SearchProvider, SearchResult } from "./job-search/types";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 interface JobSearchModuleProps {
   query: string;
+}
+
+interface SearchResult {
+  title: string;
+  company: string;
+  url: string;
+  snippet: string;
+  location?: string;
+  date?: string;
 }
 
 const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [searchProvider, setSearchProvider] = useState<SearchProvider>("google");
+  const [searchProvider, setSearchProvider] = useState<"linkedin" | "indeed" | "google">("google");
 
   useEffect(() => {
     if (query && !searchTerm) {
@@ -96,6 +103,29 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
     }
   };
 
+  const getSearchUrl = () => {
+    const searchQuery = encodeURIComponent(searchTerm || query);
+    
+    switch (searchProvider) {
+      case "linkedin":
+        return `https://www.linkedin.com/jobs/search/?keywords=${searchQuery}`;
+      case "indeed":
+        return `https://www.indeed.com/jobs?q=${searchQuery}`;
+      case "google":
+      default:
+        return `https://www.google.com/search?q=${searchQuery}+jobs`;
+    }
+  };
+
+  const openExternalSearch = () => {
+    if (!query && !searchTerm) {
+      toast.error("Please generate a boolean query first or enter a search term");
+      return;
+    }
+    
+    window.open(getSearchUrl(), "_blank");
+  };
+
   return (
     <Card className="cyber-card p-4 md:p-6 animate-fade-in">
       <div className="flex justify-between items-center mb-4">
@@ -107,28 +137,114 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
       
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row gap-2">
-          <SearchForm
-            searchTerm={searchTerm}
-            isSearching={isSearching}
-            onSearchTermChange={setSearchTerm}
-            onSearch={handleSearch}
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Enter search term or use generated query"
+            className="flex-grow bg-background/50 border-primary/20"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSearch();
+              }
+            }}
           />
-          <ExternalSearchButton
-            searchTerm={searchTerm}
-            query={query}
-            searchProvider={searchProvider}
-          />
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSearch}
+              className="cyber-card hover:neon-glow transition-all"
+              disabled={isSearching}
+            >
+              {isSearching ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Searching
+                </>
+              ) : "Search"}
+            </Button>
+            <Button
+              onClick={openExternalSearch}
+              variant="outline"
+              className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
+            >
+              <ExternalLink size={16} />
+              External
+            </Button>
+          </div>
         </div>
         
-        <ProviderToggle
-          searchProvider={searchProvider}
-          onProviderChange={setSearchProvider}
-        />
+        <ToggleGroup 
+          type="single" 
+          value={searchProvider} 
+          onValueChange={(value) => {
+            if (value) setSearchProvider(value as "linkedin" | "indeed" | "google");
+          }}
+          className="flex flex-wrap gap-2 mb-4"
+        >
+          <ToggleGroupItem value="google" className="cyber-card">
+            Google
+          </ToggleGroupItem>
+          <ToggleGroupItem value="linkedin" className="cyber-card">
+            LinkedIn
+          </ToggleGroupItem>
+          <ToggleGroupItem value="indeed" className="cyber-card">
+            Indeed
+          </ToggleGroupItem>
+        </ToggleGroup>
         
-        <JobResultsList
-          results={results}
-          isSearching={isSearching}
-        />
+        {results.length > 0 && (
+          <ScrollArea className="h-[300px] w-full">
+            <div className="space-y-4">
+              {results.map((result, index) => (
+                <div 
+                  key={index} 
+                  className="p-4 border border-primary/20 rounded-md bg-background/50 hover:border-primary/50 transition-all"
+                >
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-semibold text-primary">{result.title}</h3>
+                    <a 
+                      href={result.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-primary hover:text-primary-foreground"
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                  </div>
+                  <div className="flex items-center text-sm text-muted-foreground mt-1">
+                    <span>{result.company}</span>
+                    {result.location && (
+                      <>
+                        <span className="mx-1">•</span>
+                        <span>{result.location}</span>
+                      </>
+                    )}
+                    {result.date && (
+                      <>
+                        <span className="mx-1">•</span>
+                        <span>{result.date}</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm">{result.snippet}</p>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+        
+        {results.length === 0 && !isSearching && (
+          <div className="text-center p-6 text-muted-foreground">
+            <p>No search results yet. Click "Search" to find matching jobs.</p>
+            <p className="mt-2 text-sm">Or click "External" to search on job boards.</p>
+          </div>
+        )}
+        
+        {isSearching && (
+          <div className="flex flex-col items-center justify-center p-10">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="mt-4 text-muted-foreground">Searching for jobs...</p>
+          </div>
+        )}
       </div>
     </Card>
   );
