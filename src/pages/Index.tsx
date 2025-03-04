@@ -13,7 +13,6 @@ import PageHeader from "@/components/layout/PageHeader";
 import JobInputSection from "@/components/job/JobInputSection";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
-import CounterModule from "@/components/CounterModule";
 import StatisticsModule from "@/components/StatisticsModule";
 import JobSearchModule from "@/components/JobSearchModule";
 
@@ -107,10 +106,8 @@ const Index = () => {
       
       console.log('Uploading PDF file to parse-pdf edge function');
       
-      // Make sure we're passing the correct Content-Type
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
         body: formData,
-        // Don't set content-type here, the browser will set it with the proper boundary
         headers: {
           'Accept': 'application/json'
         }
@@ -259,11 +256,7 @@ const Index = () => {
 
         <QueryPreview query={booleanQuery} />
         
-        {booleanQuery && <JobSearchModule query={booleanQuery} />}
-        
-        <div className="my-8">
-          <CounterModule className="max-w-md mx-auto" />
-        </div>
+        {booleanQuery && <JobSearchModule query={booleanQuery} session={session} />}
       </div>
     </div>
   );
