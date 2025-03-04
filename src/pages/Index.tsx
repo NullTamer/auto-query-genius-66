@@ -12,9 +12,9 @@ import PageHeader from "@/components/layout/PageHeader";
 import JobInputSection from "@/components/job/JobInputSection";
 import KeywordDisplay from "@/components/KeywordDisplay";
 import QueryPreview from "@/components/QueryPreview";
-import CounterModule from "@/components/CounterModule";
 import StatisticsModule from "@/components/StatisticsModule";
 import JobSearchModule from "@/components/JobSearchModule";
+import NavigationPane from "@/components/layout/NavigationPane";
 
 const Index = () => {
   const [jobDescription, setJobDescription] = useState("");
@@ -230,7 +230,8 @@ const Index = () => {
 
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
-      <div className="max-w-5xl mx-auto space-y-6 md:space-y-8">
+      <NavigationPane />
+      <div className="max-w-5xl mx-auto space-y-6 md:space-y-8 ml-16">
         <AuthButton session={session} />
         <PageHeader updateCount={updateCount} lastScrapeTime={lastScrapeTime} />
 
@@ -259,10 +260,6 @@ const Index = () => {
         <QueryPreview query={booleanQuery} />
         
         {booleanQuery && <JobSearchModule query={booleanQuery} keywords={keywords} />}
-        
-        <div className="my-8">
-          <CounterModule className="max-w-md mx-auto" />
-        </div>
       </div>
     </div>
   );
