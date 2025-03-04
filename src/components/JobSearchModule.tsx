@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import SearchForm from "./job-search/SearchForm";
 import ProviderToggle from "./job-search/ProviderToggle";
 import JobResultsList from "./job-search/JobResultsList";
 import ExternalSearchButton from "./job-search/ExternalSearchButton";
 import { SearchProvider, SearchResult } from "./job-search/types";
+import { supabase } from "@/integrations/supabase/client";
 
 interface JobSearchModuleProps {
   query: string;
@@ -19,9 +20,18 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchProvider, setSearchProvider] = useState<SearchProvider>("google");
 
+  // Improve autopopulation to use more of the boolean query
   useEffect(() => {
     if (query && !searchTerm) {
-      setSearchTerm(query.split(" AND ")[0]?.replace(/[()]/g, "") || "");
+      // Extract meaningful keywords from the query
+      // Remove parentheses and operators, and take the first 3-4 terms
+      const cleanedQuery = query.replace(/[()]/g, "")
+                              .replace(/ AND | OR /g, " ")
+                              .split(" ")
+                              .filter(term => term.length > 0)
+                              .slice(0, 4)
+                              .join(" ");
+      setSearchTerm(cleanedQuery);
     }
   }, [query, searchTerm]);
 
@@ -33,109 +43,30 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
 
     const searchQuery = searchTerm || query;
     setIsSearching(true);
+    setResults([]);
 
     try {
-      // Simulate loading time
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log(`Searching for "${searchQuery}" on ${searchProvider}`);
       
-      // Generate mock results based on search query and provider
-      const terms = searchQuery.split(/\s+AND\s+|\s+OR\s+/).map(term => term.replace(/[()]/g, "").trim());
-      const skills = terms.filter(term => term.length > 0).slice(0, 5);
+      // Call the edge function to get job listings
+      const { data, error } = await supabase.functions.invoke('fetch-job-listings', {
+        body: { 
+          searchTerm: searchQuery,
+          provider: searchProvider
+        }
+      });
       
-      // Create different mock results based on the selected provider
-      let mockResults: SearchResult[] = [];
-      
-      switch(searchProvider) {
-        case "linkedin":
-          mockResults = [
-            {
-              title: `${skills[0] || "Senior"} Developer`,
-              company: "LinkedIn Jobs Corp",
-              location: "Remote / San Francisco",
-              date: "Posted 2 days ago",
-              url: "https://linkedin.com/jobs/example1",
-              snippet: `LinkedIn: Looking for a developer with skills in ${skills.slice(0, 3).join(", ") || "web technologies"}. Must have 3+ years of experience.`
-            },
-            {
-              title: `${skills[1] || "Full Stack"} Engineer`,
-              company: "TechConnect",
-              location: "New York / Remote",
-              date: "Posted 5 days ago",
-              url: "https://linkedin.com/jobs/example2",
-              snippet: `LinkedIn: Join our team of talented developers with experience in ${skills.slice(1, 4).join(", ") || "software development"}.`
-            },
-            {
-              title: `${skills[0] || "Software"} Specialist`,
-              company: "ProTech Solutions",
-              location: "Boston, MA",
-              date: "Posted yesterday",
-              url: "https://linkedin.com/jobs/example3",
-              snippet: `LinkedIn: Exciting opportunity to work with ${skills.slice(2, 5).join(", ") || "cutting-edge technologies"} in a dynamic environment.`
-            }
-          ];
-          break;
-          
-        case "indeed":
-          mockResults = [
-            {
-              title: `${skills[0] || "Lead"} Programmer`,
-              company: "Indeed Tech",
-              location: "Chicago / Remote",
-              date: "Posted 1 week ago",
-              url: "https://indeed.com/jobs/example1",
-              snippet: `Indeed: Seeking programmers with strong ${skills.slice(0, 3).join(", ") || "programming"} skills. Competitive salary.`
-            },
-            {
-              title: `${skills[1] || "Backend"} Developer`,
-              company: "Data Systems Inc",
-              location: "Austin, TX",
-              date: "Posted 3 days ago",
-              url: "https://indeed.com/jobs/example2",
-              snippet: `Indeed: Join our growing team working with ${skills.slice(1, 4).join(", ") || "server technologies"} and cloud services.`
-            },
-            {
-              title: `${skills[0] || "Application"} Engineer`,
-              company: "SoftwareFirst",
-              location: "Seattle, WA",
-              date: "Posted today",
-              url: "https://indeed.com/jobs/example3",
-              snippet: `Indeed: Help build innovative solutions using ${skills.slice(2, 5).join(", ") || "modern frameworks"} and methodologies.`
-            }
-          ];
-          break;
-          
-        case "google":
-        default:
-          mockResults = [
-            {
-              title: `Senior ${skills[0] || "Software"} Engineer`,
-              company: "TechCorp Inc.",
-              location: "Remote / San Francisco",
-              date: "Posted 3 days ago",
-              url: "https://example.com/job1",
-              snippet: `Google: Looking for an experienced developer with skills in ${skills.slice(0, 3).join(", ") || "web technologies"}. Must have 3+ years of experience.`
-            },
-            {
-              title: `${skills[1] || "Full Stack"} Developer`,
-              company: "InnovateSoft",
-              location: "New York / Remote",
-              date: "Posted 1 week ago",
-              url: "https://example.com/job2",
-              snippet: `Google: Seeking a talented programmer with experience in ${skills.slice(1, 4).join(", ") || "web development"}. Join our growing team!`
-            },
-            {
-              title: `${skills[0] || "Software"} Architect`,
-              company: "BuildSystems Ltd",
-              location: "Austin, TX",
-              date: "Posted today",
-              url: "https://example.com/job3",
-              snippet: `Google: Join our team to build scalable solutions using ${skills.slice(2, 5).join(", ") || "modern technologies"}. Competitive salary and benefits.`
-            }
-          ];
+      if (error) {
+        console.error("Edge function error:", error);
+        throw new Error("Failed to fetch job listings");
       }
       
-      setResults(mockResults);
-      toast.success(`Found ${mockResults.length} job listings on ${searchProvider}`);
+      if (!data.success) {
+        throw new Error(data.error || "Failed to fetch job listings");
+      }
+      
+      setResults(data.results);
+      toast.success(`Found ${data.results.length} job listings on ${searchProvider}`);
     } catch (error) {
       console.error("Search error:", error);
       toast.error("Failed to search for jobs");

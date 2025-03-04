@@ -14,7 +14,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
     return (
       <div className="flex flex-col items-center justify-center p-10">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="mt-4 text-muted-foreground">Searching for jobs...</p>
+        <p className="mt-4 text-muted-foreground">Searching for real job listings...</p>
       </div>
     );
   }
@@ -23,7 +23,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
     return (
       <div className="text-center p-6 text-muted-foreground">
         <p>No search results yet. Click "Search" to find matching jobs.</p>
-        <p className="mt-2 text-sm">Or click "External" to search on job boards.</p>
+        <p className="mt-2 text-sm">Or click "External" to search on job boards directly.</p>
       </div>
     );
   }
@@ -47,7 +47,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                 <ExternalLink size={16} />
               </a>
             </div>
-            <div className="flex items-center text-sm text-muted-foreground mt-1">
+            <div className="flex items-center text-sm text-muted-foreground mt-1 flex-wrap">
               <span>{result.company}</span>
               {result.location && (
                 <>
