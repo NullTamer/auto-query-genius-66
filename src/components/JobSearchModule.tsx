@@ -12,6 +12,7 @@ import { SearchProvider, SearchResult } from "./job-search/types";
 import { supabase } from "@/integrations/supabase/client";
 import { Keyword } from "@/hooks/useKeywords";
 import RecommendedSearchModule from "./recommended-search/RecommendedSearchModule";
+import { useLocation } from "react-router-dom";
 
 interface JobSearchModuleProps {
   query: string;
@@ -24,6 +25,21 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchProvider, setSearchProvider] = useState<SearchProvider>("google");
+  const location = useLocation();
+  const isSearchPage = location.pathname === "/search";
+
+  // If we're on the search page, get query from URL
+  useEffect(() => {
+    if (isSearchPage) {
+      const searchParams = new URLSearchParams(location.search);
+      const urlQuery = searchParams.get("q");
+      if (urlQuery) {
+        setSearchTerm(urlQuery);
+        // Auto-search when navigating to search page with a query
+        handleSearch(urlQuery);
+      }
+    }
+  }, [isSearchPage, location.search]);
 
   // Update search term when selected terms change
   useEffect(() => {
@@ -45,13 +61,14 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
     toast.success(`Applied search combination with ${terms.length} terms`);
   };
 
-  const handleSearch = async () => {
-    if (!searchTerm && selectedTerms.length === 0) {
+  const handleSearch = async (termOverride?: string) => {
+    const finalSearchTerm = termOverride || searchTerm || query;
+    
+    if (!finalSearchTerm && selectedTerms.length === 0) {
       toast.error("Please select at least one search term");
       return;
     }
 
-    const finalSearchTerm = searchTerm || query;
     setIsSearching(true);
     setResults([]);
 
@@ -87,7 +104,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
 
   return (
     <div className="space-y-6">
-      {keywords.length > 0 && (
+      {keywords.length > 0 && !isSearchPage && (
         <RecommendedSearchModule 
           keywords={keywords}
           onSelectCombination={handleSelectCombination}
@@ -103,11 +120,13 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
         </div>
         
         <div className="space-y-4">
-          <QueryTermSelector 
-            query={query}
-            selectedTerms={selectedTerms}
-            onTermToggle={handleTermToggle}
-          />
+          {!isSearchPage && (
+            <QueryTermSelector 
+              query={query}
+              selectedTerms={selectedTerms}
+              onTermToggle={handleTermToggle}
+            />
+          )}
           
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="flex-grow">
@@ -115,7 +134,8 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
                 searchTerm={searchTerm}
                 isSearching={isSearching}
                 onSearchTermChange={setSearchTerm}
-                onSearch={handleSearch}
+                onSearch={() => handleSearch()}
+                navigateToSearch={!isSearchPage}
               />
             </div>
             <ExternalSearchButton

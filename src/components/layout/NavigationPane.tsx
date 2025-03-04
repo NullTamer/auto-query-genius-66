@@ -1,18 +1,19 @@
 
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Home, Search, User, Settings, FileBadge, Menu, X } from "lucide-react";
 
 const NavigationPane: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navItems = [
     { name: "Home", icon: Home, path: "/" },
-    { name: "Search", icon: Search, path: "/" },
+    { name: "Search", icon: Search, path: "/search" },
     { name: "Profile", icon: User, path: "/profile" },
-    { name: "Resume", icon: FileBadge, path: "/" },
-    { name: "Settings", icon: Settings, path: "/" },
+    { name: "Resume", icon: FileBadge, path: "/resume" },
+    { name: "Settings", icon: Settings, path: "/settings" },
   ];
 
   return (
@@ -41,8 +42,7 @@ const NavigationPane: React.FC = () => {
         <nav className="flex-1">
           <ul className="space-y-2 px-2">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.path || 
-                (item.path !== "/" && location.pathname.startsWith(item.path));
+              const isActive = location.pathname === item.path;
               
               return (
                 <li key={item.name}>

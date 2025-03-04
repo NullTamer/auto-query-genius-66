@@ -3,12 +3,14 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface SearchFormProps {
   searchTerm: string;
   isSearching: boolean;
   onSearchTermChange: (value: string) => void;
   onSearch: () => void;
+  navigateToSearch?: boolean;
 }
 
 const SearchForm: React.FC<SearchFormProps> = ({
@@ -16,7 +18,18 @@ const SearchForm: React.FC<SearchFormProps> = ({
   isSearching,
   onSearchTermChange,
   onSearch,
+  navigateToSearch = false,
 }) => {
+  const navigate = useNavigate();
+
+  const handleSearch = () => {
+    if (navigateToSearch && searchTerm) {
+      navigate(`/search?q=${encodeURIComponent(searchTerm)}`);
+    } else {
+      onSearch();
+    }
+  };
+
   return (
     <div className="flex flex-col sm:flex-row gap-2 w-full">
       <Input
@@ -26,12 +39,12 @@ const SearchForm: React.FC<SearchFormProps> = ({
         className="flex-grow bg-background/50 border-primary/20"
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
-            onSearch();
+            handleSearch();
           }
         }}
       />
       <Button
-        onClick={onSearch}
+        onClick={handleSearch}
         className="cyber-card hover:neon-glow transition-all whitespace-nowrap"
         disabled={isSearching}
       >
