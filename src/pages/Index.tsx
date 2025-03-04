@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
@@ -259,7 +258,7 @@ const Index = () => {
 
         <QueryPreview query={booleanQuery} />
         
-        {booleanQuery && <JobSearchModule query={booleanQuery} />}
+        {booleanQuery && <JobSearchModule query={booleanQuery} keywords={keywords} />}
         
         <div className="my-8">
           <CounterModule className="max-w-md mx-auto" />
