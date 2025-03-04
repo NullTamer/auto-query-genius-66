@@ -2,15 +2,7 @@
 import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ExternalLink, Loader2 } from "lucide-react";
-
-interface SearchResult {
-  title: string;
-  company: string;
-  url: string;
-  snippet: string;
-  location?: string;
-  date?: string;
-}
+import { SearchResult } from "./types";
 
 interface JobResultsListProps {
   results: SearchResult[];
