@@ -1,0 +1,178 @@
+
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Clock, Search, UserCircle, Settings, LogOut, History } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import NavigationPane from "@/components/layout/NavigationPane";
+
+const Profile = () => {
+  const [user, setUser] = useState<any>(null);
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+
+  // Fetch user data
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate("/auth");
+        return;
+      }
+      
+      setUser(session.user);
+      
+      // Fetch search history (mock data for now)
+      setSearchHistory([
+        { id: 1, query: "React developer", date: "2023-05-15", results: 42 },
+        { id: 2, query: "JavaScript engineer", date: "2023-05-10", results: 38 },
+        { id: 3, query: "Full-stack developer", date: "2023-05-05", results: 56 },
+        { id: 4, query: "Frontend specialist", date: "2023-04-28", results: 31 },
+        { id: 5, query: "React Native developer", date: "2023-04-20", results: 27 },
+      ]);
+      
+      setIsLoading(false);
+    };
+    
+    getUser();
+  }, [navigate]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/auth");
+    toast.success("Successfully signed out");
+  };
+
+  const runSearch = (query: string) => {
+    toast.info(`Searching for: ${query}`);
+    navigate(`/?q=${encodeURIComponent(query)}`);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono flex items-center justify-center">
+        <div className="loader"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
+      <NavigationPane />
+      <div className="max-w-5xl mx-auto space-y-6 md:space-y-8 ml-16">
+        <Card className="cyber-card p-6 animate-fade-in">
+          <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
+            <Avatar className="h-24 w-24 border-4 border-primary/50">
+              <AvatarImage src={`https://api.dicebear.com/7.x/shapes/svg?seed=${user?.email}`} />
+              <AvatarFallback>
+                <UserCircle className="h-20 w-20" />
+              </AvatarFallback>
+            </Avatar>
+            
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-primary neon-glow text-center md:text-left">
+                {user?.email}
+              </h1>
+              <p className="text-muted-foreground text-center md:text-left">
+                Member since {new Date(user?.created_at).toLocaleDateString()}
+              </p>
+              
+              <div className="mt-4 flex flex-wrap gap-2 justify-center md:justify-start">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="cyber-card"
+                  onClick={handleSignOut}
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="cyber-card"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Tabs defaultValue="history" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 cyber-card">
+            <TabsTrigger value="history">
+              <History className="mr-2 h-4 w-4" />
+              Search History
+            </TabsTrigger>
+            <TabsTrigger value="saved">
+              <Search className="mr-2 h-4 w-4" />
+              Saved Searches
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="history" className="mt-4">
+            <Card className="cyber-card">
+              <ScrollArea className="h-[400px]">
+                <div className="p-4 space-y-4">
+                  {searchHistory.length > 0 ? (
+                    searchHistory.map((item) => (
+                      <div 
+                        key={item.id} 
+                        className="p-3 border border-primary/20 rounded-md hover:border-primary/50 bg-background/50 transition-all"
+                      >
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center">
+                            <button 
+                              className="text-primary font-medium hover:underline"
+                              onClick={() => runSearch(item.query)}
+                            >
+                              {item.query}
+                            </button>
+                            <span className="ml-2 text-sm text-muted-foreground">
+                              ({item.results} results)
+                            </span>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground">
+                            <Clock className="mr-1 h-3 w-3" />
+                            {item.date}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center p-6 text-muted-foreground">
+                      <p>No search history yet.</p>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="saved" className="mt-4">
+            <Card className="cyber-card p-6">
+              <div className="text-center text-muted-foreground">
+                <p>You don't have any saved searches yet.</p>
+                <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/")}>
+                  <Search className="mr-2 h-4 w-4" />
+                  Start a New Search
+                </Button>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+};
+
+export default Profile;

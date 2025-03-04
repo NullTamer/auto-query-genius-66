@@ -1,15 +1,16 @@
 
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Home, Search, User, Settings, FileBadge, Menu, X } from "lucide-react";
 
 const NavigationPane: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const location = useLocation();
 
   const navItems = [
     { name: "Home", icon: Home, path: "/" },
     { name: "Search", icon: Search, path: "/" },
-    { name: "Profile", icon: User, path: "/auth" },
+    { name: "Profile", icon: User, path: "/profile" },
     { name: "Resume", icon: FileBadge, path: "/" },
     { name: "Settings", icon: Settings, path: "/" },
   ];
@@ -39,19 +40,28 @@ const NavigationPane: React.FC = () => {
         
         <nav className="flex-1">
           <ul className="space-y-2 px-2">
-            {navItems.map((item) => (
-              <li key={item.name}>
-                <Link
-                  to={item.path}
-                  className={`flex items-center py-2 px-3 rounded-md hover:bg-primary/20 transition-colors ${
-                    isExpanded ? "justify-start" : "justify-center"
-                  }`}
-                >
-                  <item.icon className={`h-5 w-5 text-primary ${isExpanded ? "mr-3" : ""}`} />
-                  {isExpanded && <span className="text-primary">{item.name}</span>}
-                </Link>
-              </li>
-            ))}
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path || 
+                (item.path !== "/" && location.pathname.startsWith(item.path));
+              
+              return (
+                <li key={item.name}>
+                  <Link
+                    to={item.path}
+                    className={`flex items-center py-2 px-3 rounded-md transition-colors ${
+                      isExpanded ? "justify-start" : "justify-center"
+                    } ${
+                      isActive 
+                        ? "bg-primary/20 text-primary" 
+                        : "hover:bg-primary/10 text-muted-foreground hover:text-primary"
+                    }`}
+                  >
+                    <item.icon className={`h-5 w-5 ${isExpanded ? "mr-3" : ""}`} />
+                    {isExpanded && <span>{item.name}</span>}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
         

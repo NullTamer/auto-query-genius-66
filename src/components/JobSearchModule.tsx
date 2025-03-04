@@ -51,17 +51,17 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, keywords }) =>
       return;
     }
 
-    const searchQuery = searchTerm || query;
+    const finalSearchTerm = searchTerm || query;
     setIsSearching(true);
     setResults([]);
 
     try {
-      console.log(`Searching for "${searchQuery}" on ${searchProvider}`);
+      console.log(`Searching for "${finalSearchTerm}" on ${searchProvider}`);
       
-      // Call the edge function to get job listings
+      // Call the edge function to get job listings with the correct param name
       const { data, error } = await supabase.functions.invoke('fetch-job-listings', {
         body: { 
-          searchTerm: searchQuery,
+          searchTerm: finalSearchTerm,
           provider: searchProvider
         }
       });
