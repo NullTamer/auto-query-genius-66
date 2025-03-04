@@ -43,7 +43,7 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
     <Button
       onClick={openExternalSearch}
       variant="outline"
-      className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
+      className="cyber-card flex items-center gap-2 hover:neon-glow transition-all whitespace-nowrap"
     >
       <ExternalLink size={16} />
       External

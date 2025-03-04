@@ -32,7 +32,7 @@ const SearchForm: React.FC<SearchFormProps> = ({
       />
       <Button
         onClick={onSearch}
-        className="cyber-card hover:neon-glow transition-all"
+        className="cyber-card hover:neon-glow transition-all whitespace-nowrap"
         disabled={isSearching}
       >
         {isSearching ? (

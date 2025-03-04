@@ -35,59 +35,107 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
     setIsSearching(true);
 
     try {
-      const response = await fetch(`https://serpapi.com/search.json?engine=google_jobs&q=${encodeURIComponent(searchQuery)}&api_key=mock_api_key`);
+      // Simulate loading time
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      if (!response.ok) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        const terms = searchQuery.split(/\s+AND\s+|\s+OR\s+/).map(term => term.replace(/[()]/g, "").trim());
-        const skills = terms.filter(term => term.length > 0).slice(0, 5);
-        
-        const mockResults: SearchResult[] = [
-          {
-            title: `Senior ${skills[0] || "Software"} Engineer`,
-            company: "TechCorp Inc.",
-            location: "Remote / San Francisco",
-            date: "Posted 3 days ago",
-            url: "https://example.com/job1",
-            snippet: `Looking for an experienced developer with skills in ${skills.slice(0, 3).join(", ") || "web technologies"}. Must have 3+ years of experience.`
-          },
-          {
-            title: `${skills[1] || "Full Stack"} Developer`,
-            company: "InnovateSoft",
-            location: "New York / Remote",
-            date: "Posted 1 week ago",
-            url: "https://example.com/job2",
-            snippet: `Seeking a talented programmer with experience in ${skills.slice(1, 4).join(", ") || "web development"}. Join our growing team!`
-          },
-          {
-            title: `${skills[0] || "Software"} Architect`,
-            company: "BuildSystems Ltd",
-            location: "Austin, TX",
-            date: "Posted today",
-            url: "https://example.com/job3",
-            snippet: `Join our team to build scalable solutions using ${skills.slice(2, 5).join(", ") || "modern technologies"}. Competitive salary and benefits.`
-          }
-        ];
-        
-        setResults(mockResults);
-        toast.success("Search completed");
-      } else {
-        const data = await response.json();
-        const jobListings = data.jobs_results || [];
-        
-        const formattedResults = jobListings.map((job: any) => ({
-          title: job.title,
-          company: job.company_name,
-          location: job.location,
-          url: job.link,
-          date: job.detected_extensions?.posted_at || "Recently posted",
-          snippet: job.snippet
-        }));
-        
-        setResults(formattedResults);
-        toast.success(`Found ${formattedResults.length} job listings`);
+      // Generate mock results based on search query and provider
+      const terms = searchQuery.split(/\s+AND\s+|\s+OR\s+/).map(term => term.replace(/[()]/g, "").trim());
+      const skills = terms.filter(term => term.length > 0).slice(0, 5);
+      
+      // Create different mock results based on the selected provider
+      let mockResults: SearchResult[] = [];
+      
+      switch(searchProvider) {
+        case "linkedin":
+          mockResults = [
+            {
+              title: `${skills[0] || "Senior"} Developer`,
+              company: "LinkedIn Jobs Corp",
+              location: "Remote / San Francisco",
+              date: "Posted 2 days ago",
+              url: "https://linkedin.com/jobs/example1",
+              snippet: `LinkedIn: Looking for a developer with skills in ${skills.slice(0, 3).join(", ") || "web technologies"}. Must have 3+ years of experience.`
+            },
+            {
+              title: `${skills[1] || "Full Stack"} Engineer`,
+              company: "TechConnect",
+              location: "New York / Remote",
+              date: "Posted 5 days ago",
+              url: "https://linkedin.com/jobs/example2",
+              snippet: `LinkedIn: Join our team of talented developers with experience in ${skills.slice(1, 4).join(", ") || "software development"}.`
+            },
+            {
+              title: `${skills[0] || "Software"} Specialist`,
+              company: "ProTech Solutions",
+              location: "Boston, MA",
+              date: "Posted yesterday",
+              url: "https://linkedin.com/jobs/example3",
+              snippet: `LinkedIn: Exciting opportunity to work with ${skills.slice(2, 5).join(", ") || "cutting-edge technologies"} in a dynamic environment.`
+            }
+          ];
+          break;
+          
+        case "indeed":
+          mockResults = [
+            {
+              title: `${skills[0] || "Lead"} Programmer`,
+              company: "Indeed Tech",
+              location: "Chicago / Remote",
+              date: "Posted 1 week ago",
+              url: "https://indeed.com/jobs/example1",
+              snippet: `Indeed: Seeking programmers with strong ${skills.slice(0, 3).join(", ") || "programming"} skills. Competitive salary.`
+            },
+            {
+              title: `${skills[1] || "Backend"} Developer`,
+              company: "Data Systems Inc",
+              location: "Austin, TX",
+              date: "Posted 3 days ago",
+              url: "https://indeed.com/jobs/example2",
+              snippet: `Indeed: Join our growing team working with ${skills.slice(1, 4).join(", ") || "server technologies"} and cloud services.`
+            },
+            {
+              title: `${skills[0] || "Application"} Engineer`,
+              company: "SoftwareFirst",
+              location: "Seattle, WA",
+              date: "Posted today",
+              url: "https://indeed.com/jobs/example3",
+              snippet: `Indeed: Help build innovative solutions using ${skills.slice(2, 5).join(", ") || "modern frameworks"} and methodologies.`
+            }
+          ];
+          break;
+          
+        case "google":
+        default:
+          mockResults = [
+            {
+              title: `Senior ${skills[0] || "Software"} Engineer`,
+              company: "TechCorp Inc.",
+              location: "Remote / San Francisco",
+              date: "Posted 3 days ago",
+              url: "https://example.com/job1",
+              snippet: `Google: Looking for an experienced developer with skills in ${skills.slice(0, 3).join(", ") || "web technologies"}. Must have 3+ years of experience.`
+            },
+            {
+              title: `${skills[1] || "Full Stack"} Developer`,
+              company: "InnovateSoft",
+              location: "New York / Remote",
+              date: "Posted 1 week ago",
+              url: "https://example.com/job2",
+              snippet: `Google: Seeking a talented programmer with experience in ${skills.slice(1, 4).join(", ") || "web development"}. Join our growing team!`
+            },
+            {
+              title: `${skills[0] || "Software"} Architect`,
+              company: "BuildSystems Ltd",
+              location: "Austin, TX",
+              date: "Posted today",
+              url: "https://example.com/job3",
+              snippet: `Google: Join our team to build scalable solutions using ${skills.slice(2, 5).join(", ") || "modern technologies"}. Competitive salary and benefits.`
+            }
+          ];
       }
+      
+      setResults(mockResults);
+      toast.success(`Found ${mockResults.length} job listings on ${searchProvider}`);
     } catch (error) {
       console.error("Search error:", error);
       toast.error("Failed to search for jobs");
