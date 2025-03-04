@@ -75,7 +75,6 @@ export type Database = {
           description: string | null
           id: number
           is_public: boolean | null
-          pdf_path: string | null
           posting_url: string | null
           processed_at: string | null
           source_id: number | null
@@ -90,7 +89,6 @@ export type Database = {
           description?: string | null
           id?: never
           is_public?: boolean | null
-          pdf_path?: string | null
           posting_url?: string | null
           processed_at?: string | null
           source_id?: number | null
@@ -105,7 +103,6 @@ export type Database = {
           description?: string | null
           id?: never
           is_public?: boolean | null
-          pdf_path?: string | null
           posting_url?: string | null
           processed_at?: string | null
           source_id?: number | null
@@ -170,41 +167,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "keywords_job_posting_id_fkey"
-            columns: ["job_posting_id"]
-            isOneToOne: false
-            referencedRelation: "job_postings"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      search_history: {
-        Row: {
-          created_at: string | null
-          id: number
-          is_saved: boolean | null
-          job_posting_id: number | null
-          query: string
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: number
-          is_saved?: boolean | null
-          job_posting_id?: number | null
-          query: string
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: number
-          is_saved?: boolean | null
-          job_posting_id?: number | null
-          query?: string
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "search_history_job_posting_id_fkey"
             columns: ["job_posting_id"]
             isOneToOne: false
             referencedRelation: "job_postings"
