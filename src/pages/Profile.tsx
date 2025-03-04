@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Clock, Search, UserCircle, Settings, LogOut, History } from "lucide-react";
+import { Clock, Search, UserCircle, Settings, LogOut, History, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import NavigationPane from "@/components/layout/NavigationPane";
@@ -15,6 +15,7 @@ const Profile = () => {
   const [user, setUser] = useState<any>(null);
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const navigate = useNavigate();
 
   // Fetch user data and search history
@@ -69,6 +70,16 @@ const Profile = () => {
     getUser();
   }, [navigate]);
 
+  // Reset copied state after timeout
+  useEffect(() => {
+    if (copiedId !== null) {
+      const timer = setTimeout(() => {
+        setCopiedId(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [copiedId]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
@@ -78,6 +89,12 @@ const Profile = () => {
   const runSearch = (query: string, provider: string = "google") => {
     toast.info(`Searching for: ${query}`);
     navigate(`/search?q=${encodeURIComponent(query)}&provider=${provider}`);
+  };
+
+  const copyToClipboard = (text: string, id: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    toast.success("Query copied to clipboard");
   };
 
   if (isLoading) {
@@ -162,11 +179,10 @@ const Profile = () => {
                     searchHistory.map((item) => (
                       <div 
                         key={item.id} 
-                        className="p-3 border border-primary/20 rounded-md hover:border-primary/50 bg-background/50 transition-all cursor-pointer"
-                        onClick={() => runSearch(item.query, item.provider)}
+                        className="p-3 border border-primary/20 rounded-md hover:border-primary/50 bg-background/50 transition-all relative"
                       >
                         <div className="flex justify-between items-center">
-                          <div className="flex items-center">
+                          <div className="flex items-center cursor-pointer" onClick={() => runSearch(item.query, item.provider)}>
                             <span className="text-primary font-medium hover:underline">
                               {item.query}
                             </span>
@@ -181,8 +197,21 @@ const Profile = () => {
                               : new Date(item.created_at).toLocaleDateString()}
                           </div>
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Provider: {item.provider || "google"}
+                        <div className="text-xs text-muted-foreground mt-1 flex justify-between">
+                          <span>Provider: {item.provider || "google"}</span>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 px-2 text-muted-foreground hover:text-primary"
+                            onClick={() => copyToClipboard(item.query, item.id)}
+                          >
+                            {copiedId === item.id ? (
+                              <Check className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Copy className="h-3 w-3 mr-1" />
+                            )}
+                            {copiedId === item.id ? "Copied" : "Copy"}
+                          </Button>
                         </div>
                       </div>
                     ))

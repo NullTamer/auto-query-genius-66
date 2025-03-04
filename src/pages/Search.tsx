@@ -1,12 +1,13 @@
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
-import { Search as SearchIcon, History } from "lucide-react";
+import { Search as SearchIcon, History, Copy, Check } from "lucide-react";
 import JobSearchModule from "@/components/JobSearchModule";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SearchProvider } from "@/components/job-search/types";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const Search = () => {
   const location = useLocation();
@@ -14,6 +15,7 @@ const Search = () => {
   const searchParams = new URLSearchParams(location.search);
   const searchQuery = searchParams.get("q") || "";
   const provider = (searchParams.get("provider") as SearchProvider) || "google";
+  const [isCopied, setIsCopied] = useState(false);
 
   // Ensure URL is updated if parameters change
   useEffect(() => {
@@ -35,8 +37,26 @@ const Search = () => {
     }
   }, [searchQuery, provider, location.search, navigate]);
 
+  // Reset copied state after timeout
+  useEffect(() => {
+    if (isCopied) {
+      const timer = setTimeout(() => {
+        setIsCopied(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isCopied]);
+
   const handleViewHistory = () => {
     navigate("/profile");
+  };
+
+  const copyToClipboard = () => {
+    if (!searchQuery) return;
+    
+    navigator.clipboard.writeText(searchQuery);
+    setIsCopied(true);
+    toast.success("Query copied to clipboard");
   };
 
   return (
@@ -49,15 +69,31 @@ const Search = () => {
               <SearchIcon className="inline mr-2 h-5 w-5" />
               Search
             </h2>
-            <Button 
-              variant="outline"
-              size="sm"
-              className="cyber-card"
-              onClick={handleViewHistory}
-            >
-              <History className="mr-2 h-4 w-4" />
-              Search History
-            </Button>
+            <div className="flex gap-2">
+              {searchQuery && (
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  className="cyber-card"
+                  onClick={copyToClipboard}
+                >
+                  {isCopied ? (
+                    <><Check className="mr-2 h-4 w-4" /> Copied</>
+                  ) : (
+                    <><Copy className="mr-2 h-4 w-4" /> Copy Query</>
+                  )}
+                </Button>
+              )}
+              <Button 
+                variant="outline"
+                size="sm"
+                className="cyber-card"
+                onClick={handleViewHistory}
+              >
+                <History className="mr-2 h-4 w-4" />
+                Search History
+              </Button>
+            </div>
           </div>
           
           <p className="mb-6 text-muted-foreground">
