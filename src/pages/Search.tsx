@@ -2,10 +2,11 @@
 import React, { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
-import { Search as SearchIcon } from "lucide-react";
+import { Search as SearchIcon, History } from "lucide-react";
 import JobSearchModule from "@/components/JobSearchModule";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SearchProvider } from "@/components/job-search/types";
+import { Button } from "@/components/ui/button";
 
 const Search = () => {
   const location = useLocation();
@@ -34,6 +35,10 @@ const Search = () => {
     }
   }, [searchQuery, provider, location.search, navigate]);
 
+  const handleViewHistory = () => {
+    navigate("/profile");
+  };
+
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
       <NavigationPane />
@@ -44,6 +49,15 @@ const Search = () => {
               <SearchIcon className="inline mr-2 h-5 w-5" />
               Search
             </h2>
+            <Button 
+              variant="outline"
+              size="sm"
+              className="cyber-card"
+              onClick={handleViewHistory}
+            >
+              <History className="mr-2 h-4 w-4" />
+              Search History
+            </Button>
           </div>
           
           <p className="mb-6 text-muted-foreground">

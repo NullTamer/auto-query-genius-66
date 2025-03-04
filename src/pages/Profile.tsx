@@ -128,6 +128,15 @@ const Profile = () => {
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="cyber-card"
+                  onClick={() => navigate("/search")}
+                >
+                  <Search className="mr-2 h-4 w-4" />
+                  New Search
+                </Button>
               </div>
             </div>
           </div>
@@ -153,16 +162,14 @@ const Profile = () => {
                     searchHistory.map((item) => (
                       <div 
                         key={item.id} 
-                        className="p-3 border border-primary/20 rounded-md hover:border-primary/50 bg-background/50 transition-all"
+                        className="p-3 border border-primary/20 rounded-md hover:border-primary/50 bg-background/50 transition-all cursor-pointer"
+                        onClick={() => runSearch(item.query, item.provider)}
                       >
                         <div className="flex justify-between items-center">
                           <div className="flex items-center">
-                            <button 
-                              className="text-primary font-medium hover:underline"
-                              onClick={() => runSearch(item.query, item.provider)}
-                            >
+                            <span className="text-primary font-medium hover:underline">
                               {item.query}
-                            </button>
+                            </span>
                             <span className="ml-2 text-sm text-muted-foreground">
                               ({item.results_count || 0} results)
                             </span>
@@ -173,6 +180,9 @@ const Profile = () => {
                               ? item.created_at 
                               : new Date(item.created_at).toLocaleDateString()}
                           </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Provider: {item.provider || "google"}
                         </div>
                       </div>
                     ))
@@ -190,7 +200,7 @@ const Profile = () => {
             <Card className="cyber-card p-6">
               <div className="text-center text-muted-foreground">
                 <p>You don't have any saved searches yet.</p>
-                <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/")}>
+                <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/search")}>
                   <Search className="mr-2 h-4 w-4" />
                   Start a New Search
                 </Button>

@@ -115,6 +115,13 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     if (results.length > 0 && isSearchPage) {
       handleSearch(searchTerm, provider);
     }
+    
+    // Update URL to include provider
+    if (isSearchPage) {
+      const searchParams = new URLSearchParams(location.search);
+      searchParams.set("provider", provider);
+      navigate(`/search?${searchParams.toString()}`, { replace: true });
+    }
   };
 
   const handleSearch = async (termOverride?: string, providerOverride?: SearchProvider) => {
