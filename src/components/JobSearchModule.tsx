@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,15 +63,12 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, session }) => 
     setIsSearching(true);
 
     try {
-      // In a real implementation, this would call an API to search job boards
-      // For now, we'll create improved mock results based on the query
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       const queryParts = queryToUse.split(" OR ").map(part => part.replace(/[()]/g, "").trim());
       const queryKeywords = queryParts.flatMap(part => part.split(" AND ").map(k => k.trim()));
       const uniqueKeywords = Array.from(new Set(queryKeywords)).filter(k => k.length > 0);
       
-      // Create more realistic search results based on the query keywords
       const mockResults: SearchResult[] = [
         {
           title: `Senior ${uniqueKeywords[0] || 'Software'} Engineer`,
@@ -114,7 +110,6 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, session }) => 
       setResults(mockResults);
       toast.success("Search completed");
       
-      // Save search to history
       if (session?.user) {
         saveSearchHistory(queryToUse);
       }
@@ -126,17 +121,17 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, session }) => 
     }
   };
 
-  const getSearchUrl = () => {
-    const searchQuery = encodeURIComponent(searchTerm || query);
+  const getSearchUrl = (provider: string, searchQuery: string) => {
+    const encodedQuery = encodeURIComponent(searchQuery);
     
-    switch (searchProvider) {
+    switch (provider) {
       case "linkedin":
-        return `https://www.linkedin.com/jobs/search/?keywords=${searchQuery}`;
+        return `https://www.linkedin.com/jobs/search/?keywords=${encodedQuery}`;
       case "indeed":
-        return `https://www.indeed.com/jobs?q=${searchQuery}`;
+        return `https://www.indeed.com/jobs?q=${encodedQuery}`;
       case "google":
       default:
-        return `https://www.google.com/search?q=${searchQuery}+jobs`;
+        return `https://www.google.com/search?q=${encodedQuery}+jobs`;
     }
   };
 
@@ -148,12 +143,15 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, session }) => 
       return;
     }
     
-    // Save search to history before opening external site
     if (session?.user) {
       saveSearchHistory(queryToUse);
     }
     
-    window.open(getSearchUrl(), "_blank");
+    window.open(getSearchUrl("google", queryToUse), "_blank");
+    window.open(getSearchUrl("linkedin", queryToUse), "_blank");
+    window.open(getSearchUrl("indeed", queryToUse), "_blank");
+    
+    toast.success("Opened search results in Google, LinkedIn, and Indeed");
   };
 
   const handleSelectFromHistory = (historicQuery: string) => {
@@ -200,6 +198,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query, session }) => 
                 onClick={openExternalSearch}
                 variant="outline"
                 className="cyber-card flex items-center gap-2 hover:neon-glow transition-all"
+                title="Search on Google, LinkedIn, and Indeed"
               >
                 <ExternalLink size={16} />
                 External
