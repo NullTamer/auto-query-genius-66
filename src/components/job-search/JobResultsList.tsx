@@ -1,7 +1,7 @@
 
 import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, Calendar } from "lucide-react";
 import { SearchResult } from "./types";
 
 interface JobResultsListProps {
@@ -14,7 +14,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
     return (
       <div className="flex flex-col items-center justify-center p-10">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="mt-4 text-muted-foreground">Searching for real job listings...</p>
+        <p className="mt-4 text-muted-foreground">Searching for job listings...</p>
       </div>
     );
   }
@@ -29,7 +29,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
   }
 
   return (
-    <ScrollArea className="h-[300px] w-full">
+    <ScrollArea className="h-[400px] w-full">
       <div className="space-y-4">
         {results.map((result, index) => (
           <div
@@ -42,24 +42,25 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                 href={result.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:text-primary-foreground"
+                className="text-primary hover:text-primary-foreground hover:bg-primary/80 p-1 rounded transition-colors"
+                title="Open in new tab"
               >
                 <ExternalLink size={16} />
               </a>
             </div>
+            <div className="text-base font-medium mt-1">{result.company}</div>
             <div className="flex items-center text-sm text-muted-foreground mt-1 flex-wrap">
-              <span>{result.company}</span>
               {result.location && (
-                <>
-                  <span className="mx-1">•</span>
+                <div className="flex items-center">
+                  <MapPin size={14} className="mr-1" />
                   <span>{result.location}</span>
-                </>
+                </div>
               )}
               {result.date && (
-                <>
-                  <span className="mx-1">•</span>
+                <div className="flex items-center ml-3">
+                  <Calendar size={14} className="mr-1" />
                   <span>{result.date}</span>
-                </>
+                </div>
               )}
             </div>
             <p className="mt-2 text-sm">{result.snippet}</p>

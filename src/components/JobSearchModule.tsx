@@ -20,17 +20,21 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({ query }) => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchProvider, setSearchProvider] = useState<SearchProvider>("google");
 
-  // Improve autopopulation to use more of the boolean query
+  // Enhanced autopopulation to better extract keywords from the boolean query
   useEffect(() => {
     if (query && !searchTerm) {
       // Extract meaningful keywords from the query
-      // Remove parentheses and operators, and take the first 3-4 terms
-      const cleanedQuery = query.replace(/[()]/g, "")
-                              .replace(/ AND | OR /g, " ")
-                              .split(" ")
-                              .filter(term => term.length > 0)
-                              .slice(0, 4)
-                              .join(" ");
+      // Remove boolean operators, parentheses, and take the most relevant terms
+      const cleanedQuery = query
+        .replace(/\([^)]*\)/g, ' ') // Remove content inside parentheses
+        .replace(/\(|\)/g, '') // Remove parentheses
+        .replace(/ AND | OR /gi, ' ') // Remove boolean operators
+        .trim()
+        .split(/\s+/)
+        .filter(term => term.length > 2 && !term.match(/^(and|or)$/i)) // Filter out small terms and standalone operators
+        .slice(0, 5) // Take first 5 meaningful terms
+        .join(' ');
+      
       setSearchTerm(cleanedQuery);
     }
   }, [query, searchTerm]);
