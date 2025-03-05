@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
@@ -6,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { toggleDarkMode } from "@/integrations/supabase/client";
 
 const Settings = () => {
   const [darkMode, setDarkMode] = useState(false);
@@ -15,16 +17,11 @@ const Settings = () => {
     setDarkMode(isDarkMode);
   }, []);
 
-  const toggleDarkMode = () => {
-    if (darkMode) {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    } else {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    }
-    setDarkMode(!darkMode);
-    toast.success(`${!darkMode ? "Dark" : "Light"} mode enabled`);
+  const handleToggleDarkMode = () => {
+    const newDarkModeState = !darkMode;
+    toggleDarkMode(newDarkModeState);
+    setDarkMode(newDarkModeState);
+    toast.success(`${newDarkModeState ? "Dark" : "Light"} mode enabled`);
   };
 
   return (
@@ -77,7 +74,7 @@ const Settings = () => {
                   <Switch 
                     id="dark-mode" 
                     checked={darkMode}
-                    onCheckedChange={toggleDarkMode}
+                    onCheckedChange={handleToggleDarkMode}
                   />
                 </div>
               </div>
