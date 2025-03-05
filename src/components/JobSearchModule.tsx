@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
 import SearchForm from "./job-search/SearchForm";
 import ProviderToggle from "./job-search/ProviderToggle";
@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Keyword } from "@/hooks/useKeywords";
 import RecommendedSearchModule from "./recommended-search/RecommendedSearchModule";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface JobSearchModuleProps {
   query: string;
@@ -139,22 +140,58 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     try {
       console.log(`Searching for "${finalSearchTerm}" on ${finalProvider}`);
       
-      // Call the edge function to get job listings with the correct param name
-      const { data, error } = await supabase.functions.invoke('fetch-job-listings', {
-        body: { 
-          searchTerm: finalSearchTerm,
-          provider: finalProvider
+      // Add retry logic to improve chances of getting real results
+      let attempts = 0;
+      const maxAttempts = 2;
+      let successfulSearch = false;
+      let data: any;
+      
+      while (attempts < maxAttempts && !successfulSearch) {
+        attempts++;
+        
+        // Call the edge function to get job listings
+        const response = await supabase.functions.invoke('fetch-job-listings', {
+          body: { 
+            searchTerm: finalSearchTerm,
+            provider: finalProvider
+          }
+        });
+        
+        if (!response.error && response.data.success) {
+          data = response.data;
+          
+          // Check if we got real results
+          const realResultsCount = data.results.filter(
+            (r: SearchResult) => !r.source.includes('Alternative') && r.source !== 'Fallback'
+          ).length;
+          
+          if (realResultsCount > 0) {
+            successfulSearch = true;
+            console.log(`Got ${realResultsCount} real results on attempt ${attempts}`);
+          } else if (attempts < maxAttempts) {
+            console.log(`No real results on attempt ${attempts}, retrying...`);
+            // Short delay before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } else {
+          // If there's an error, don't retry
+          const error = response.error || (response.data && !response.data.success ? response.data.error : "Unknown error");
+          console.error("Edge function error:", error);
+          throw new Error("Failed to fetch job listings");
         }
-      });
-      
-      if (error) {
-        console.error("Edge function error:", error);
-        throw new Error("Failed to fetch job listings");
       }
       
-      if (!data.success) {
-        throw new Error(data.error || "Failed to fetch job listings");
+      if (!data) {
+        throw new Error("Failed to fetch job listings after multiple attempts");
       }
+      
+      // Count real vs. fallback results for better user feedback
+      const realResults = data.results.filter(
+        (r: SearchResult) => !r.source.includes('Alternative') && r.source !== 'Fallback'
+      );
+      const fallbackResults = data.results.filter(
+        (r: SearchResult) => r.source.includes('Alternative') || r.source === 'Fallback'
+      );
       
       setResults(data.results);
       
@@ -166,14 +203,25 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
             user_id: session.user.id,
             query: finalSearchTerm,
             provider: finalProvider,
-            results_count: data.results.length
+            results_count: data.results.length,
+            real_results_count: realResults.length
           });
         }
       } catch (historyError) {
         console.error("Failed to save search history:", historyError);
       }
       
-      toast.success(`Found ${data.results.length} job listings on ${finalProvider}`);
+      // Show appropriate toast based on result types
+      if (realResults.length > 0) {
+        if (fallbackResults.length > 0) {
+          toast.success(`Found ${realResults.length} real and ${fallbackResults.length} generated job listings`);
+        } else {
+          toast.success(`Found ${realResults.length} job listings on ${finalProvider}`);
+        }
+      } else {
+        toast.info(`Generated ${fallbackResults.length} job listings based on your search`);
+      }
+      
     } catch (error) {
       console.error("Search error:", error);
       toast.error("Failed to search for jobs");
@@ -207,6 +255,13 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
               onTermToggle={handleTermToggle}
             />
           )}
+          
+          <Alert variant="default" className="bg-blue-500/10 text-blue-500 border border-blue-500/20 mb-4">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              Results include both real job listings and AI-generated listings when real data can't be retrieved.
+            </AlertDescription>
+          </Alert>
           
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="flex-grow">

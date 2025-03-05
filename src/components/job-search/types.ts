@@ -8,4 +8,8 @@ export interface SearchResult {
   snippet: string;
   location?: string;
   date?: string;
+  source: string;
+  id?: string;
+  timestamp?: string;
+  isReal?: boolean;
 }

@@ -97,7 +97,8 @@ const Search = () => {
           </div>
           
           <p className="mb-6 text-muted-foreground">
-            Find job listings based on the selected search terms or your own custom query.
+            Find job listings based on the selected search terms or your own custom query. 
+            Results include both real and AI-generated job listings.
           </p>
           
           {searchQuery ? (
