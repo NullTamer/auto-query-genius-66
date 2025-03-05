@@ -37,3 +37,42 @@ export const toggleDarkMode = (isDarkMode: boolean) => {
     localStorage.setItem('theme', 'light');
   }
 };
+
+// Function to subscribe to realtime updates for job-related tables
+export const subscribeToJobUpdates = (
+  table: string,
+  callback: (payload: any) => void
+) => {
+  return supabase
+    .channel(`${table}-changes`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table },
+      callback
+    )
+    .subscribe();
+};
+
+// Helper function to make job API search requests
+export const searchJobs = async (
+  searchTerm: string, 
+  provider?: string
+) => {
+  try {
+    const response = await supabase.functions.invoke('fetch-job-listings', {
+      body: { 
+        searchTerm, 
+        provider
+      }
+    });
+    
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error searching jobs:', error);
+    throw error;
+  }
+};

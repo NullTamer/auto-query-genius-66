@@ -47,6 +47,42 @@ export type Database = {
           },
         ]
       }
+      job_api_credentials: {
+        Row: {
+          access_token: string | null
+          api_key: string
+          api_secret: string | null
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          refresh_token: string | null
+          service: string
+          updated_at: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          api_key: string
+          api_secret?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          refresh_token?: string | null
+          service: string
+          updated_at?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          api_key?: string
+          api_secret?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          refresh_token?: string | null
+          service?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       job_descriptions: {
         Row: {
           description: string | null
@@ -183,6 +219,7 @@ export type Database = {
           id: number
           is_saved: boolean | null
           job_posting_id: number | null
+          provider: string | null
           query: string
           user_id: string | null
         }
@@ -191,6 +228,7 @@ export type Database = {
           id?: number
           is_saved?: boolean | null
           job_posting_id?: number | null
+          provider?: string | null
           query: string
           user_id?: string | null
         }
@@ -199,6 +237,7 @@ export type Database = {
           id?: number
           is_saved?: boolean | null
           job_posting_id?: number | null
+          provider?: string | null
           query?: string
           user_id?: string | null
         }
