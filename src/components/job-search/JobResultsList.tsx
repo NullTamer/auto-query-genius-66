@@ -12,8 +12,8 @@ interface JobResultsListProps {
 
 const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching }) => {
   // Count real vs fallback results
-  const realResults = results.filter(r => !r.source.includes('Alternative') && r.source !== 'Fallback');
-  const fallbackResults = results.filter(r => r.source.includes('Alternative') || r.source === 'Fallback');
+  const realResults = results.filter(r => r.source !== 'Fallback');
+  const fallbackResults = results.filter(r => r.source === 'Fallback');
   
   if (isSearching) {
     return (
@@ -46,7 +46,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
       <ScrollArea className="h-[400px] w-full">
         <div className="space-y-4 p-1">
           {results.map((result, index) => {
-            const isFallback = result.source.includes('Alternative') || result.source === 'Fallback';
+            const isFallback = result.source === 'Fallback';
             
             return (
               <div
