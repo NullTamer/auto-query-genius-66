@@ -25,7 +25,8 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       case "indeed":
         return `https://www.indeed.com/jobs?q=${searchQuery}`;
       case "google":
-        return `https://www.google.com/search?q=${searchQuery}+jobs`;
+        // Enhanced Google search with edu/org/gov sites as requested
+        return `https://www.google.com/search?q=${searchQuery}+jobs+site:*.edu|site:*.org|site:*.gov+-inurl:(signup+|+login)`;
       default:
         return `https://www.google.com/search?q=${searchQuery}+jobs`;
     }
