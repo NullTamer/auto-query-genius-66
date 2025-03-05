@@ -37,8 +37,14 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       return;
     }
     
-    // Open in the currently selected provider
-    window.open(getSearchUrl(searchProvider), "_blank");
+    try {
+      // Open in the currently selected provider
+      window.open(getSearchUrl(searchProvider), "_blank");
+      toast.success(`Opened search on ${searchProvider}`);
+    } catch (error) {
+      console.error("Failed to open search:", error);
+      toast.error("Failed to open search. Please check your popup blocker settings.");
+    }
   };
 
   const openAllJobBoards = () => {
@@ -54,9 +60,13 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       // Open each provider in a new window with proper delays
       providers.forEach((provider, index) => {
         setTimeout(() => {
-          const url = getSearchUrl(provider);
-          console.log(`Opening ${provider} search at: ${url}`);
-          window.open(url, `_blank_${provider}`);
+          try {
+            const url = getSearchUrl(provider);
+            console.log(`Opening ${provider} search at: ${url}`);
+            window.open(url, `_blank_${provider}`);
+          } catch (err) {
+            console.error(`Failed to open ${provider}:`, err);
+          }
         }, index * 300); // 300ms delay between each window open
       });
       
