@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ExternalLink, Loader2, MapPin, Calendar, Building, AlertCircle, CheckCircle, DollarSign, Briefcase } from "lucide-react";
 import { SearchResult } from "./types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 interface JobResultsListProps {
   results: SearchResult[];
