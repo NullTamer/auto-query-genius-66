@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { SearchProvider } from "@/components/job-search/types";
 
 export const useJobProcessing = () => {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -10,7 +11,13 @@ export const useJobProcessing = () => {
   const [currentJobId, setCurrentJobId] = useState<number | null>(null);
   const processingRef = useRef(false);
 
-  const processJob = useCallback(async (jobDescription: string, jobUrl?: string) => {
+  const processJob = useCallback(async (
+    jobDescription?: string, 
+    jobUrl?: string, 
+    query?: string,
+    provider?: SearchProvider,
+    location?: string
+  ) => {
     if (processingRef.current) {
       console.log('Already processing a job, skipping');
       return null;
@@ -29,13 +36,19 @@ export const useJobProcessing = () => {
       setIsProcessing(true);
       setHasError(false);
       
-      console.log('Invoking edge function to process job description', jobUrl ? `from URL: ${jobUrl}` : '');
+      console.log('Invoking edge function to process job', 
+        jobDescription ? 'from description' : 
+        jobUrl ? `from URL: ${jobUrl}` : 
+        `from search query: ${query} (${provider})`);
       
       // Invoke the edge function with improved payload
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription,
           jobUrl,
+          query,
+          provider,
+          location,
           // Pass authentication data if available
           userId: sessionData?.session?.user?.id
         }
@@ -48,16 +61,29 @@ export const useJobProcessing = () => {
       
       console.log('Edge function response:', data);
       
-      if (!data.success || !data.jobId) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to process job posting');
       }
       
-      const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
-      setCurrentJobId(jobId);
+      // If we have job results, set the current job ID to the first one
+      if (data.jobs && data.jobs.length > 0) {
+        const jobId = typeof data.jobs[0].jobId === 'string' 
+          ? parseInt(data.jobs[0].jobId, 10) 
+          : data.jobs[0].jobId;
+          
+        setCurrentJobId(jobId);
+        console.log('Processing completed for job ID:', jobId);
+      } else if (data.jobId) {
+        // Backwards compatibility with old response format
+        const jobId = typeof data.jobId === 'string' ? parseInt(data.jobId, 10) : data.jobId;
+        setCurrentJobId(jobId);
+        console.log('Processing completed for job ID:', jobId);
+      }
+      
       setLastScrapeTime(new Date().toISOString());
       toast.success('Job processing completed');
-      console.log('Processing completed for job ID:', jobId);
-      return jobId;
+      
+      return data.jobs || (data.jobId ? [{ jobId: data.jobId, keywords: data.keywords }] : []);
 
     } catch (error) {
       console.error('Error processing job:', error);
