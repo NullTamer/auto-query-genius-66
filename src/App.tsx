@@ -1,5 +1,6 @@
 
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
@@ -10,9 +11,30 @@ import NotFound from "./pages/NotFound";
 import { Toaster } from "@/components/ui/toaster";
 import "./App.css";
 
+// Initialize dark mode based on saved preference
+const initDarkMode = () => {
+  if (localStorage.theme === 'dark' || 
+      (!('theme' in localStorage) && 
+       window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+};
+
+// Dark mode initializer component
+const DarkModeInitializer = () => {
+  useEffect(() => {
+    initDarkMode();
+  }, []);
+  
+  return null;
+};
+
 function App() {
   return (
     <Router>
+      <DarkModeInitializer />
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/auth" element={<Auth />} />

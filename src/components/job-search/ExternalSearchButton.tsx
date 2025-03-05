@@ -54,7 +54,9 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       // Open each provider in a new window with proper delays
       providers.forEach((provider, index) => {
         setTimeout(() => {
-          const newWindow = window.open(getSearchUrl(provider), `_blank_${provider}`);
+          const url = getSearchUrl(provider);
+          console.log(`Opening ${provider} search at: ${url}`);
+          const newWindow = window.open(url, `_blank_${provider}`);
           if (!newWindow) throw new Error("Popup blocked");
         }, index * 300); // 300ms delay between each window open
       });

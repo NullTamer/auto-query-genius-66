@@ -40,7 +40,7 @@ serve(async (req) => {
 
     console.log(`Fetching job listings for term: "${searchTerm}" from provider: ${provider || 'all'}`);
     
-    // Array of rotating user agents for bypassing scraping detection
+    // Array of rotating user agents to avoid being blocked
     const userAgents = [
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
@@ -65,456 +65,410 @@ serve(async (req) => {
       'DNT': '1'
     };
 
-    let results: SearchResult[] = [];
-    
-    // Enhanced Google Jobs scraper with retry mechanism
-    async function fetchGoogleJobs(searchQuery: string): Promise<SearchResult[]> {
-      // Constants for retry mechanism
-      const MAX_RETRIES = 3;
-      const BASE_DELAY = 2000;
-      
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    // Create a scraper that uses Agno-like techniques
+    class AgnoScraper {
+      constructor(private provider: string, private headers: Record<string, string>) {}
+
+      private async fetchContent(url: string, retryCount = 3): Promise<string> {
+        for (let i = 0; i < retryCount; i++) {
+          try {
+            console.log(`Fetching content from ${url} (attempt ${i + 1}/${retryCount})`);
+            const response = await fetch(url, { headers: this.headers });
+            
+            if (!response.ok) {
+              throw new Error(`HTTP error: ${response.status}`);
+            }
+            
+            const html = await response.text();
+            console.log(`Received HTML length: ${html.length}`);
+            
+            if (html.includes("CAPTCHA") || html.includes("unusual traffic")) {
+              console.log("CAPTCHA or traffic warning detected, retrying...");
+              await delay(1000 * (i + 1));
+              continue;
+            }
+            
+            return html;
+          } catch (error) {
+            console.error(`Error fetching ${url} (attempt ${i + 1}/${retryCount}):`, error);
+            if (i === retryCount - 1) throw error;
+            await delay(1000 * (i + 1));
+          }
+        }
+        throw new Error(`Failed to fetch ${url} after ${retryCount} attempts`);
+      }
+
+      private cleanText(text: string): string {
+        return text
+          .replace(/<[^>]*>/g, '') // Remove HTML tags
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      private extractWithRegex(html: string, regex: RegExp, groupIndex = 1): string[] {
+        const matches = [...html.matchAll(regex)];
+        return matches.map(match => this.cleanText(match[groupIndex]));
+      }
+
+      async scrapeJobs(searchTerm: string): Promise<SearchResult[]> {
+        console.log(`Scraping jobs for "${searchTerm}" from ${this.provider}`);
+        
+        switch (this.provider) {
+          case 'google':
+            return this.scrapeGoogle(searchTerm);
+          case 'linkedin':
+            return this.scrapeLinkedIn(searchTerm);
+          case 'indeed':
+            return this.scrapeIndeed(searchTerm);
+          default:
+            throw new Error(`Unsupported provider: ${this.provider}`);
+        }
+      }
+
+      private async scrapeGoogle(searchTerm: string): Promise<SearchResult[]> {
+        const encodedQuery = encodeURIComponent(searchTerm + " jobs");
+        const url = `https://www.google.com/search?q=${encodedQuery}&ibp=htl;jobs`;
+        
         try {
-          await delay(attempt > 0 ? BASE_DELAY * (attempt + 1) : BASE_DELAY);
+          const html = await this.fetchContent(url);
+          console.log('Successfully fetched Google Jobs HTML');
           
-          const encodedQuery = encodeURIComponent(searchQuery + " jobs");
-          // Use Google's Jobs specific URL
-          const url = `https://www.google.com/search?q=${encodedQuery}&ibp=htl;jobs`;
-          
-          console.log(`Scraping from Google Jobs (attempt ${attempt + 1}): ${url}`);
-          const response = await fetch(url, { headers });
-          
-          if (!response.ok) {
-            throw new Error(`Failed to fetch from Google: ${response.status}`);
-          }
-          
-          const html = await response.text();
-          console.log(`Received HTML from Google (length: ${html.length})`);
-          
-          // Check if we've been rate limited or blocked
-          if (html.includes("unusual traffic") || html.includes("CAPTCHA")) {
-            console.warn("Google may have detected scraping - received CAPTCHA or unusual traffic warning");
-            continue; // Try again with a different user agent
-          }
-          
-          const results: SearchResult[] = [];
-          
-          // Various extraction patterns to handle Google Jobs layout
+          // Multiple extraction patterns to handle Google's changing layout
           const extractionPatterns = [
-            // Pattern 1: Modern Google Jobs layout
             {
-              cardRegex: /<div[^>]*class="[^"]*BjJfJf[^"]*"[^>]*>(.*?)<\/div><\/div><\/div><\/div>/gs,
-              titleRegex: /<h2[^>]*class="[^"]*BjJfJf[^"]*"[^>]*>(.*?)<\/h2>/g,
-              companyRegex: /<div[^>]*class="[^"]*vNEEBe[^"]*"[^>]*>(.*?)<\/div>/g,
-              locationRegex: /<div[^>]*class="[^"]*Qk80Jf[^"]*"[^>]*>(.*?)<\/div>/g,
-              detailsRegex: /<div[^>]*class="[^"]*KKh3md[^"]*"[^>]*>(.*?)<\/div>/g,
-              snippetRegex: /<span[^>]*class="[^"]*HBvzbc[^"]*"[^>]*>(.*?)<\/span>/g
+              jobCard: /<div[^>]*class="[^"]*BjJfJf[^"]*"[^>]*>(.*?)<\/div><\/div><\/div><\/div>/gs,
+              title: /<h2[^>]*class="[^"]*BjJfJf[^"]*"[^>]*>(.*?)<\/h2>/g,
+              company: /<div[^>]*class="[^"]*vNEEBe[^"]*"[^>]*>(.*?)<\/div>/g,
+              location: /<div[^>]*class="[^"]*Qk80Jf[^"]*"[^>]*>(.*?)<\/div>/g,
+              details: /<div[^>]*class="[^"]*KKh3md[^"]*"[^>]*>(.*?)<\/div>/g,
+              snippet: /<span[^>]*class="[^"]*HBvzbc[^"]*"[^>]*>(.*?)<\/span>/g
             },
-            // Pattern 2: Alternative Google Jobs layout
             {
-              cardRegex: /<div[^>]*class="[^"]*pE8vnd[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
-              titleRegex: /<div[^>]*class="[^"]*BvQan[^"]*"[^>]*>(.*?)<\/div>/g,
-              companyRegex: /<div[^>]*class="[^"]*nJlQNd[^"]*"[^>]*>(.*?)<\/div>/g,
-              locationRegex: /<div[^>]*class="[^"]*oNwCmf[^"]*"[^>]*>(.*?)<\/div>/g,
-              detailsRegex: /<div[^>]*class="[^"]*I2Cbhb[^"]*"[^>]*>(.*?)<\/div>/g,
-              snippetRegex: /<div[^>]*class="[^"]*IiQJ2c[^"]*"[^>]*>(.*?)<\/div>/g
+              jobCard: /<div[^>]*class="[^"]*pE8vnd[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
+              title: /<div[^>]*class="[^"]*BvQan[^"]*"[^>]*>(.*?)<\/div>/g,
+              company: /<div[^>]*class="[^"]*nJlQNd[^"]*"[^>]*>(.*?)<\/div>/g,
+              location: /<div[^>]*class="[^"]*oNwCmf[^"]*"[^>]*>(.*?)<\/div>/g,
+              snippet: /<div[^>]*class="[^"]*IiQJ2c[^"]*"[^>]*>(.*?)<\/div>/g
             },
-            // Pattern 3: Classic Google Jobs layout
             {
-              cardRegex: /<li[^>]*class="[^"]*job-item[^"]*"[^>]*>(.*?)<\/li>/gs,
-              titleRegex: /<a[^>]*class="[^"]*jobtitle[^"]*"[^>]*>(.*?)<\/a>/g,
-              companyRegex: /<span[^>]*class="[^"]*company[^"]*"[^>]*>(.*?)<\/span>/g,
-              locationRegex: /<span[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)<\/span>/g,
-              detailsRegex: /<span[^>]*class="[^"]*salary[^"]*"[^>]*>(.*?)<\/span>/g,
-              snippetRegex: /<div[^>]*class="[^"]*job-snippet[^"]*"[^>]*>(.*?)<\/div>/g
+              jobCard: /<div[^>]*class="[^"]*job-search-card[^"]*"[^>]*>(.*?)<\/div>/gs,
+              title: /<a[^>]*class="[^"]*title[^"]*"[^>]*>(.*?)<\/a>/g,
+              company: /<span[^>]*class="[^"]*company[^"]*"[^>]*>(.*?)<\/span>/g,
+              location: /<span[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)<\/span>/g,
+              snippet: /<div[^>]*class="[^"]*description[^"]*"[^>]*>(.*?)<\/div>/g
             }
           ];
           
-          // Try each pattern until we get results
           for (const pattern of extractionPatterns) {
-            const jobCards = [...html.matchAll(pattern.cardRegex)];
+            const jobCards = [...html.matchAll(pattern.jobCard)];
             
             if (jobCards.length > 0) {
-              console.log(`Found ${jobCards.length} potential job cards using pattern`);
+              console.log(`Found ${jobCards.length} job cards using pattern`);
               
-              // Extract all matches
-              const titles = [...html.matchAll(pattern.titleRegex)].map(match => stripTags(match[1]));
-              const companies = [...html.matchAll(pattern.companyRegex)].map(match => stripTags(match[1]));
-              const locations = [...html.matchAll(pattern.locationRegex)].map(match => stripTags(match[1]));
-              const details = [...html.matchAll(pattern.detailsRegex)].map(match => stripTags(match[1]));
-              const snippets = [...html.matchAll(pattern.snippetRegex)].map(match => stripTags(match[1]));
+              const titles = this.extractWithRegex(html, pattern.title);
+              const companies = this.extractWithRegex(html, pattern.company);
+              const locations = this.extractWithRegex(html, pattern.location);
+              const snippets = pattern.snippet ? this.extractWithRegex(html, pattern.snippet) : [];
               
-              console.log(`Extracted: ${titles.length} titles, ${companies.length} companies, ${locations.length} locations, ${snippets.length} snippets`);
+              console.log(`Extracted ${titles.length} titles, ${companies.length} companies, ${locations.length} locations`);
               
-              if (titles.length > 0 && companies.length > 0) {
-                // Create job listings from the extracted data
-                const limit = Math.min(titles.length, companies.length, 10);
+              if (titles.length > 0 || companies.length > 0) {
+                const results: SearchResult[] = [];
+                const limit = Math.min(Math.max(titles.length, companies.length), 10);
                 
                 for (let i = 0; i < limit; i++) {
-                  // Extract salary information from details if available
-                  let salary = undefined;
-                  if (details[i] && details[i].includes('$')) {
-                    salary = details[i];
-                  }
-                  
-                  // Create the job listing
                   results.push({
                     title: titles[i] || `Job ${i+1}`,
                     company: companies[i] || "Unknown Company",
                     location: locations[i] || "Remote",
                     date: "Recent",
                     url: `https://www.google.com/search?q=${encodedQuery}`,
-                    snippet: snippets[i] || `Job opportunity at ${companies[i] || "a company"}`,
+                    snippet: snippets[i] || `Position at ${companies[i] || "a company"}`,
                     source: "Google Jobs",
-                    salary
+                    salary: undefined
                   });
                 }
                 
-                // If we found results, return them
-                if (results.length > 0) {
-                  return results;
-                }
+                return results;
               }
             }
           }
           
-          // If we couldn't extract using any pattern but found HTML, look for any job-related data
-          if (html.length > 1000) {
-            // Last resort direct extraction
-            const jobTitles = html.match(/<h2[^>]*>(.*?)<\/h2>/g) || [];
-            const companyNames = html.match(/<span[^>]*company[^>]*>(.*?)<\/span>/g) || [];
+          // Generic fallback extraction
+          if (html.includes('job') || html.includes('career')) {
+            const titleMatches = html.match(/<h3[^>]*>(.*?)<\/h3>/g) || [];
+            const companyMatches = html.match(/<div[^>]*company[^>]*>(.*?)<\/div>/g) || [];
             
-            if (jobTitles.length > 0) {
-              console.log(`Found ${jobTitles.length} potential job titles with direct extraction`);
+            if (titleMatches.length > 0) {
+              console.log(`Found ${titleMatches.length} potential job titles with fallback extraction`);
               
-              for (let i = 0; i < Math.min(jobTitles.length, 5); i++) {
+              const results: SearchResult[] = [];
+              for (let i = 0; i < Math.min(titleMatches.length, 5); i++) {
                 results.push({
-                  title: stripTags(jobTitles[i]),
-                  company: companyNames[i] ? stripTags(companyNames[i]) : "Unknown Company",
+                  title: this.cleanText(titleMatches[i]),
+                  company: companyMatches[i] ? this.cleanText(companyMatches[i]) : "Google Jobs Listing",
                   location: "Various Locations",
                   date: "Recent",
-                  url: `https://www.google.com/search?q=${encodedQuery}`,
-                  snippet: `Job opportunity related to ${searchQuery}`,
+                  url: url,
+                  snippet: `Job opportunity related to ${searchTerm}`,
                   source: "Google Jobs"
                 });
               }
               
-              if (results.length > 0) {
-                return results;
-              }
+              return results;
             }
           }
           
-          console.log("No job listings found in Google Jobs response");
-          if (attempt === MAX_RETRIES - 1) {
-            console.log("All Google scraping attempts failed");
-          }
+          console.log("No Google job listings found with any extraction pattern");
+          return [];
         } catch (error) {
-          console.error(`Error fetching from Google Jobs (attempt ${attempt + 1}):`, error);
-          if (attempt === MAX_RETRIES - 1) {
-            console.error("All Google scraping attempts failed");
-          }
+          console.error("Error scraping Google:", error);
+          return [];
         }
       }
-      
-      return [];
-    }
-    
-    // Enhanced LinkedIn Jobs scraper
-    async function fetchLinkedInJobs(searchQuery: string): Promise<SearchResult[]> {
-      const MAX_RETRIES = 2;
-      
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+
+      private async scrapeLinkedIn(searchTerm: string): Promise<SearchResult[]> {
+        const encodedQuery = encodeURIComponent(searchTerm);
+        const url = `https://www.linkedin.com/jobs/search/?keywords=${encodedQuery}`;
+        
         try {
-          await delay(1000 * (attempt + 1));
+          const html = await this.fetchContent(url);
+          console.log('Successfully fetched LinkedIn Jobs HTML');
           
-          const encodedQuery = encodeURIComponent(searchQuery);
-          const url = `https://www.linkedin.com/jobs/search/?keywords=${encodedQuery}`;
-          
-          console.log(`Scraping from LinkedIn (attempt ${attempt + 1}): ${url}`);
-          const response = await fetch(url, { headers });
-          
-          if (!response.ok) {
-            throw new Error(`Failed to fetch from LinkedIn: ${response.status}`);
-          }
-          
-          const html = await response.text();
-          console.log(`Received HTML from LinkedIn (length: ${html.length})`);
-          
-          const results: SearchResult[] = [];
-          
-          // Various extraction patterns for LinkedIn
+          // LinkedIn extraction patterns
           const extractionPatterns = [
-            // Pattern 1: Modern LinkedIn job cards
             {
-              cardRegex: /<div[^>]*class="[^"]*base-card[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
-              titleRegex: /<h3[^>]*class="[^"]*base-search-card__title[^"]*"[^>]*>(.*?)<\/h3>/s,
-              companyRegex: /<h4[^>]*class="[^"]*base-search-card__subtitle[^"]*"[^>]*>(.*?)<\/h4>/s,
-              locationRegex: /<span[^>]*class="[^"]*job-search-card__location[^"]*"[^>]*>(.*?)<\/span>/s,
-              dateRegex: /<time[^>]*datetime[^>]*>(.*?)<\/time>/s,
-              linkRegex: /href="(https:\/\/www\.linkedin\.com\/jobs\/view\/[^"]+)"/,
-              snippetRegex: /<p[^>]*class="[^"]*job-search-card__snippet[^"]*"[^>]*>(.*?)<\/p>/s
+              jobCard: /<div[^>]*class="[^"]*base-card[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
+              title: /<h3[^>]*class="[^"]*base-search-card__title[^"]*"[^>]*>(.*?)<\/h3>/s,
+              company: /<h4[^>]*class="[^"]*base-search-card__subtitle[^"]*"[^>]*>(.*?)<\/h4>/s,
+              location: /<span[^>]*class="[^"]*job-search-card__location[^"]*"[^>]*>(.*?)<\/span>/s,
+              link: /href="(https:\/\/www\.linkedin\.com\/jobs\/view\/[^"]+)"/,
+              snippet: /<p[^>]*class="[^"]*job-search-card__snippet[^"]*"[^>]*>(.*?)<\/p>/s
             },
-            // Pattern 2: Classic LinkedIn job listing
             {
-              cardRegex: /<li[^>]*class="[^"]*jobs-search-results__list-item[^"]*"[^>]*>(.*?)<\/li>/gs,
-              titleRegex: /<a[^>]*class="[^"]*job-title[^"]*"[^>]*>(.*?)<\/a>/s,
-              companyRegex: /<a[^>]*class="[^"]*company-name[^"]*"[^>]*>(.*?)<\/a>/s,
-              locationRegex: /<span[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)<\/span>/s,
-              dateRegex: /<span[^>]*class="[^"]*date[^"]*"[^>]*>(.*?)<\/span>/s,
-              linkRegex: /href="([^"]+)"/,
-              snippetRegex: /<p[^>]*class="[^"]*description[^"]*"[^>]*>(.*?)<\/p>/s
+              jobCard: /<li[^>]*class="[^"]*jobs-search-results__list-item[^"]*"[^>]*>(.*?)<\/li>/gs,
+              title: /<a[^>]*class="[^"]*job-title[^"]*"[^>]*>(.*?)<\/a>/s,
+              company: /<a[^>]*class="[^"]*company-name[^"]*"[^>]*>(.*?)<\/a>/s,
+              location: /<span[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)<\/span>/s,
+              link: /href="([^"]+)"/,
+              snippet: /<p[^>]*class="[^"]*description[^"]*"[^>]*>(.*?)<\/p>/s
             }
           ];
           
-          // Try each pattern until we get results
           for (const pattern of extractionPatterns) {
-            const jobCards = [...html.matchAll(pattern.cardRegex)];
+            const jobCards = [...html.matchAll(pattern.jobCard)];
             
             if (jobCards.length > 0) {
-              console.log(`Found ${jobCards.length} LinkedIn job cards using pattern`);
+              console.log(`Found ${jobCards.length} LinkedIn job cards`);
               
-              // Extract details from each card
+              const results: SearchResult[] = [];
               for (let i = 0; i < Math.min(jobCards.length, 10); i++) {
                 const card = jobCards[i][1];
                 
-                const titleMatch = card.match(pattern.titleRegex);
-                const companyMatch = card.match(pattern.companyRegex);
-                const locationMatch = card.match(pattern.locationRegex);
-                const dateMatch = card.match(pattern.dateRegex);
-                const linkMatch = card.match(pattern.linkRegex);
-                const snippetMatch = card.match(pattern.snippetRegex);
+                const titleMatch = card.match(pattern.title);
+                const companyMatch = card.match(pattern.company);
+                const locationMatch = card.match(pattern.location);
+                const linkMatch = card.match(pattern.link);
+                const snippetMatch = card.match(pattern.snippet);
                 
                 results.push({
-                  title: titleMatch ? stripTags(titleMatch[1]) : `LinkedIn Job ${i+1}`,
-                  company: companyMatch ? stripTags(companyMatch[1]) : "Unknown Company",
-                  location: locationMatch ? stripTags(locationMatch[1]) : "Remote",
-                  date: dateMatch ? stripTags(dateMatch[1]) : "Recent",
+                  title: titleMatch ? this.cleanText(titleMatch[1]) : `LinkedIn Job ${i+1}`,
+                  company: companyMatch ? this.cleanText(companyMatch[1]) : "Unknown Company",
+                  location: locationMatch ? this.cleanText(locationMatch[1]) : "Various Locations",
+                  date: "Recent",
                   url: linkMatch ? linkMatch[1] : url,
-                  snippet: snippetMatch ? stripTags(snippetMatch[1]) : `Job opportunity at ${companyMatch ? stripTags(companyMatch[1]) : "a company"}`,
+                  snippet: snippetMatch ? this.cleanText(snippetMatch[1]) : `Position at ${companyMatch ? this.cleanText(companyMatch[1]) : "a company"}`,
                   source: "LinkedIn"
                 });
               }
               
-              // If we found results, return them
-              if (results.length > 0) {
-                return results;
-              }
+              return results;
             }
           }
           
-          // Last resort: look for any job-related content
+          // Fallback extraction for LinkedIn
           if (html.length > 1000) {
-            const jobTitles = html.match(/<h3[^>]*>(.*?)<\/h3>/g) || [];
-            const companyNames = html.match(/<h4[^>]*>(.*?)<\/h4>/g) || [];
+            const titleMatches = html.match(/<h3[^>]*>(.*?)<\/h3>/g) || [];
+            const companyMatches = html.match(/<h4[^>]*>(.*?)<\/h4>/g) || [];
             
-            if (jobTitles.length > 0) {
-              console.log(`Found ${jobTitles.length} potential job titles with direct extraction`);
+            if (titleMatches.length > 0) {
+              console.log(`Found ${titleMatches.length} potential LinkedIn job titles with fallback extraction`);
               
-              for (let i = 0; i < Math.min(jobTitles.length, 5); i++) {
+              const results: SearchResult[] = [];
+              for (let i = 0; i < Math.min(titleMatches.length, 5); i++) {
                 results.push({
-                  title: stripTags(jobTitles[i]),
-                  company: companyNames[i] ? stripTags(companyNames[i]) : "Unknown Company",
+                  title: this.cleanText(titleMatches[i]),
+                  company: companyMatches[i] ? this.cleanText(companyMatches[i]) : "LinkedIn Listing",
                   location: "Various Locations",
                   date: "Recent",
                   url: url,
-                  snippet: `Job opportunity related to ${searchQuery}`,
+                  snippet: `Job opportunity related to ${searchTerm}`,
                   source: "LinkedIn"
                 });
               }
               
-              if (results.length > 0) {
-                return results;
-              }
+              return results;
             }
           }
           
-          console.log("No job listings found in LinkedIn response");
+          console.log("No LinkedIn job listings found with any extraction pattern");
+          return [];
         } catch (error) {
-          console.error(`Error fetching from LinkedIn (attempt ${attempt + 1}):`, error);
+          console.error("Error scraping LinkedIn:", error);
+          return [];
         }
       }
-      
-      return [];
-    }
-    
-    // Enhanced Indeed Jobs scraper
-    async function fetchIndeedJobs(searchQuery: string): Promise<SearchResult[]> {
-      const MAX_RETRIES = 2;
-      
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+
+      private async scrapeIndeed(searchTerm: string): Promise<SearchResult[]> {
+        const encodedQuery = encodeURIComponent(searchTerm);
+        const url = `https://www.indeed.com/jobs?q=${encodedQuery}`;
+        
         try {
-          await delay(1500 * (attempt + 1));
+          const html = await this.fetchContent(url);
+          console.log('Successfully fetched Indeed Jobs HTML');
           
-          const encodedQuery = encodeURIComponent(searchQuery);
-          const url = `https://www.indeed.com/jobs?q=${encodedQuery}`;
-          
-          console.log(`Scraping from Indeed (attempt ${attempt + 1}): ${url}`);
-          const response = await fetch(url, { headers });
-          
-          if (!response.ok) {
-            throw new Error(`Failed to fetch from Indeed: ${response.status}`);
-          }
-          
-          const html = await response.text();
-          console.log(`Received HTML from Indeed (length: ${html.length})`);
-          
-          const results: SearchResult[] = [];
-          
-          // Various extraction patterns for Indeed
+          // Indeed extraction patterns
           const extractionPatterns = [
-            // Pattern 1: Modern Indeed job cards
             {
-              cardRegex: /<div[^>]*class="[^"]*job_seen_beacon[^"]*"[^>]*>(.*?)<\/div><\/div><\/div><\/div>/gs,
-              titleRegex: /<h2[^>]*class="[^"]*jobTitle[^"]*"[^>]*>(.*?)<\/h2>/s,
-              companyRegex: /<span[^>]*class="[^"]*companyName[^"]*"[^>]*>(.*?)<\/span>/s,
-              locationRegex: /<div[^>]*class="[^"]*companyLocation[^"]*"[^>]*>(.*?)<\/div>/s,
-              salaryRegex: /<span[^>]*class="[^"]*salary[^"]*"[^>]*>(.*?)<\/span>/s,
-              snippetRegex: /<div[^>]*class="[^"]*job-snippet[^"]*"[^>]*>(.*?)<\/div>/s
+              jobCard: /<div[^>]*class="[^"]*job_seen_beacon[^"]*"[^>]*>(.*?)<\/div><\/div><\/div><\/div>/gs,
+              title: /<h2[^>]*class="[^"]*jobTitle[^"]*"[^>]*>(.*?)<\/h2>/s,
+              company: /<span[^>]*class="[^"]*companyName[^"]*"[^>]*>(.*?)<\/span>/s,
+              location: /<div[^>]*class="[^"]*companyLocation[^"]*"[^>]*>(.*?)<\/div>/s,
+              salary: /<span[^>]*class="[^"]*salary[^"]*"[^>]*>(.*?)<\/span>/s,
+              snippet: /<div[^>]*class="[^"]*job-snippet[^"]*"[^>]*>(.*?)<\/div>/s
             },
-            // Pattern 2: Classic Indeed job listing
             {
-              cardRegex: /<div[^>]*class="[^"]*jobsearch-SerpJobCard[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
-              titleRegex: /<a[^>]*class="[^"]*jobtitle[^"]*"[^>]*>(.*?)<\/a>/s,
-              companyRegex: /<span[^>]*class="[^"]*company[^"]*"[^>]*>(.*?)<\/span>/s,
-              locationRegex: /<span[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)<\/span>/s,
-              salaryRegex: /<span[^>]*class="[^"]*salaryText[^"]*"[^>]*>(.*?)<\/span>/s,
-              snippetRegex: /<div[^>]*class="[^"]*summary[^"]*"[^>]*>(.*?)<\/div>/s
+              jobCard: /<div[^>]*class="[^"]*jobsearch-SerpJobCard[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
+              title: /<a[^>]*class="[^"]*jobtitle[^"]*"[^>]*>(.*?)<\/a>/s,
+              company: /<span[^>]*class="[^"]*company[^"]*"[^>]*>(.*?)<\/span>/s,
+              location: /<span[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)<\/span>/s,
+              salary: /<span[^>]*class="[^"]*salaryText[^"]*"[^>]*>(.*?)<\/span>/s,
+              snippet: /<div[^>]*class="[^"]*summary[^"]*"[^>]*>(.*?)<\/div>/s
             },
-            // Pattern 3: Alternative Indeed cards
             {
-              cardRegex: /<div[^>]*class="[^"]*tapItem[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
-              titleRegex: /<span[^>]*id="jobTitle[^"]*"[^>]*>(.*?)<\/span>/s,
-              companyRegex: /<span[^>]*class="[^"]*companyName[^"]*"[^>]*>(.*?)<\/span>/s,
-              locationRegex: /<div[^>]*class="[^"]*companyLocation[^"]*"[^>]*>(.*?)<\/div>/s,
-              salaryRegex: /<span[^>]*class="[^"]*salary[^"]*"[^>]*>(.*?)<\/span>/s,
-              snippetRegex: /<div[^>]*class="[^"]*job-snippet[^"]*"[^>]*>(.*?)<\/div>/s
+              jobCard: /<div[^>]*class="[^"]*tapItem[^"]*"[^>]*>(.*?)<\/div><\/div><\/div>/gs,
+              title: /<span[^>]*id="jobTitle[^"]*"[^>]*>(.*?)<\/span>/s,
+              company: /<span[^>]*class="[^"]*companyName[^"]*"[^>]*>(.*?)<\/span>/s,
+              location: /<div[^>]*class="[^"]*companyLocation[^"]*"[^>]*>(.*?)<\/div>/s,
+              salary: /<span[^>]*class="[^"]*salary[^"]*"[^>]*>(.*?)<\/span>/s,
+              snippet: /<div[^>]*class="[^"]*job-snippet[^"]*"[^>]*>(.*?)<\/div>/s
             }
           ];
           
-          // Try each pattern until we get results
           for (const pattern of extractionPatterns) {
-            const jobCards = [...html.matchAll(pattern.cardRegex)];
+            const jobCards = [...html.matchAll(pattern.jobCard)];
             
             if (jobCards.length > 0) {
-              console.log(`Found ${jobCards.length} Indeed job cards using pattern`);
+              console.log(`Found ${jobCards.length} Indeed job cards`);
               
-              // Extract details from each card
+              const results: SearchResult[] = [];
               for (let i = 0; i < Math.min(jobCards.length, 10); i++) {
                 const card = jobCards[i][1];
                 
-                const titleMatch = card.match(pattern.titleRegex);
-                const companyMatch = card.match(pattern.companyRegex);
-                const locationMatch = card.match(pattern.locationRegex);
-                const salaryMatch = card.match(pattern.salaryRegex);
-                const snippetMatch = card.match(pattern.snippetRegex);
+                const titleMatch = card.match(pattern.title);
+                const companyMatch = card.match(pattern.company);
+                const locationMatch = card.match(pattern.location);
+                const salaryMatch = card.match(pattern.salary);
+                const snippetMatch = card.match(pattern.snippet);
                 
                 results.push({
-                  title: titleMatch ? stripTags(titleMatch[1]) : `Indeed Job ${i+1}`,
-                  company: companyMatch ? stripTags(companyMatch[1]) : "Unknown Company",
-                  location: locationMatch ? stripTags(locationMatch[1]) : "Remote",
+                  title: titleMatch ? this.cleanText(titleMatch[1]) : `Indeed Job ${i+1}`,
+                  company: companyMatch ? this.cleanText(companyMatch[1]) : "Unknown Company",
+                  location: locationMatch ? this.cleanText(locationMatch[1]) : "Various Locations",
                   date: "Recent",
                   url: url,
-                  snippet: snippetMatch ? stripTags(snippetMatch[1]) : `Job opportunity at ${companyMatch ? stripTags(companyMatch[1]) : "a company"}`,
+                  snippet: snippetMatch ? this.cleanText(snippetMatch[1]) : `Position at ${companyMatch ? this.cleanText(companyMatch[1]) : "a company"}`,
                   source: "Indeed",
-                  salary: salaryMatch ? stripTags(salaryMatch[1]) : undefined
+                  salary: salaryMatch ? this.cleanText(salaryMatch[1]) : undefined
                 });
               }
               
-              // If we found results, return them
-              if (results.length > 0) {
-                return results;
-              }
+              return results;
             }
           }
           
-          // Last resort direct extraction
+          // Fallback extraction for Indeed
           if (html.length > 1000) {
-            // Look for job listings in tabular format
-            const tableJobRegex = /<tr[^>]*class="[^"]*result[^"]*"[^>]*>(.*?)<\/tr>/gs;
-            const tableJobs = [...html.matchAll(tableJobRegex)];
+            const titleMatches = html.match(/<h2[^>]*>(.*?)<\/h2>/g) || [];
+            const companyMatches = html.match(/<span[^>]*company[^>]*>(.*?)<\/span>/g) || [];
             
-            if (tableJobs.length > 0) {
-              console.log(`Found ${tableJobs.length} job rows with alternative method`);
+            if (titleMatches.length > 0) {
+              console.log(`Found ${titleMatches.length} potential Indeed job titles with fallback extraction`);
               
-              for (let i = 0; i < Math.min(tableJobs.length, 10); i++) {
-                const row = tableJobs[i][1];
-                
-                const titleMatch = row.match(/<a[^>]*class="[^"]*jobtitle[^"]*"[^>]*>(.*?)<\/a>/s);
-                const companyMatch = row.match(/<span[^>]*class="[^"]*company[^"]*"[^>]*>(.*?)<\/span>/s);
-                const locationMatch = row.match(/<span[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)<\/span>/s);
-                
+              const results: SearchResult[] = [];
+              for (let i = 0; i < Math.min(titleMatches.length, 5); i++) {
                 results.push({
-                  title: titleMatch ? stripTags(titleMatch[1]) : `Indeed Job ${i+1}`,
-                  company: companyMatch ? stripTags(companyMatch[1]) : "Unknown Company",
-                  location: locationMatch ? stripTags(locationMatch[1]) : "Remote",
+                  title: this.cleanText(titleMatches[i]),
+                  company: companyMatches[i] ? this.cleanText(companyMatches[i]) : "Indeed Listing",
+                  location: "Various Locations",
                   date: "Recent",
                   url: url,
-                  snippet: `Job opportunity at ${companyMatch ? stripTags(companyMatch[1]) : "a company"}`,
+                  snippet: `Job opportunity related to ${searchTerm}`,
                   source: "Indeed"
                 });
               }
               
-              if (results.length > 0) {
-                return results;
-              }
+              return results;
             }
           }
           
-          console.log("No job listings found in Indeed response");
+          console.log("No Indeed job listings found with any extraction pattern");
+          return [];
         } catch (error) {
-          console.error(`Error fetching from Indeed (attempt ${attempt + 1}):`, error);
+          console.error("Error scraping Indeed:", error);
+          return [];
         }
       }
-      
-      return [];
-    }
-    
-    // Helper function to strip HTML tags
-    function stripTags(html: string): string {
-      if (!html) return '';
-      return html
-        .replace(/<[^>]*>/g, '')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\s+/g, ' ')
-        .trim();
     }
 
-    // Determine which providers to fetch from
-    const shouldFetchGoogle = !provider || provider === 'google';
-    const shouldFetchLinkedIn = !provider || provider === 'linkedin';
-    const shouldFetchIndeed = !provider || provider === 'indeed';
+    let results: SearchResult[] = [];
     
-    // Fetch from all requested providers
-    const promises: Promise<SearchResult[]>[] = [];
+    // Determine which providers to scrape based on user selection
+    const shouldScrapeGoogle = !provider || provider === 'google';
+    const shouldScrapeLinkedIn = !provider || provider === 'linkedin';
+    const shouldScrapeIndeed = !provider || provider === 'indeed';
     
-    if (shouldFetchGoogle) promises.push(fetchGoogleJobs(searchTerm));
-    if (shouldFetchLinkedIn) promises.push(fetchLinkedInJobs(searchTerm));
-    if (shouldFetchIndeed) promises.push(fetchIndeedJobs(searchTerm));
+    // Create scrapers and fetch results
+    const scrapers = [];
     
-    // Wait for all requests to complete with a timeout
-    const timeout = (ms: number) => new Promise(resolve => setTimeout(() => resolve([]), ms));
+    if (shouldScrapeGoogle) {
+      scrapers.push(new AgnoScraper('google', headers).scrapeJobs(searchTerm));
+    }
+    
+    if (shouldScrapeLinkedIn) {
+      scrapers.push(new AgnoScraper('linkedin', headers).scrapeJobs(searchTerm));
+    }
+    
+    if (shouldScrapeIndeed) {
+      scrapers.push(new AgnoScraper('indeed', headers).scrapeJobs(searchTerm));
+    }
+    
+    // Wait for all scrapers with a timeout
+    const timeout = new Promise<SearchResult[][]>(resolve => 
+      setTimeout(() => resolve([]), 25000)
+    );
+    
     const resultsArrays = await Promise.race([
-      Promise.all(promises),
-      timeout(25000)  // 25 second timeout
+      Promise.all(scrapers),
+      timeout
     ]) as SearchResult[][];
     
-    // Combine results from all providers
+    // Combine all results
     for (const array of resultsArrays) {
       results = [...results, ...array];
     }
     
-    console.log(`Found ${results.length} total results from all providers`);
+    console.log(`Scraped ${results.length} total job listings from all providers`);
     
-    // Generate fallback results only if no real results were found
+    // Generate fallback results ONLY if no real results were found
     if (results.length === 0) {
       console.log("No search results found. Generating minimal fallback data with clear indication.");
       
-      // Create minimal fallback job listings
       const terms = searchTerm.split(" ");
       const roles = ["Developer", "Engineer", "Specialist", "Manager", "Consultant"];
       

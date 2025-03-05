@@ -1,13 +1,32 @@
-
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
 import { Settings as SettingsIcon, Bell, User, Shield, Database } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 const Settings = () => {
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    const isDarkMode = document.documentElement.classList.contains("dark");
+    setDarkMode(isDarkMode);
+  }, []);
+
+  const toggleDarkMode = () => {
+    if (darkMode) {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    } else {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    }
+    setDarkMode(!darkMode);
+    toast.success(`${!darkMode ? "Dark" : "Light"} mode enabled`);
+  };
+
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
       <NavigationPane />
@@ -55,7 +74,11 @@ const Settings = () => {
                     <Label htmlFor="dark-mode">Dark Mode</Label>
                     <p className="text-sm text-muted-foreground">Use dark mode for the application</p>
                   </div>
-                  <Switch id="dark-mode" defaultChecked />
+                  <Switch 
+                    id="dark-mode" 
+                    checked={darkMode}
+                    onCheckedChange={toggleDarkMode}
+                  />
                 </div>
               </div>
             </TabsContent>
