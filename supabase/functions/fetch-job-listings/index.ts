@@ -465,26 +465,7 @@ serve(async (req) => {
     
     console.log(`Scraped ${results.length} total job listings from all providers`);
     
-    // Generate fallback results ONLY if no real results were found
-    if (results.length === 0) {
-      console.log("No search results found. Generating minimal fallback data with clear indication.");
-      
-      const terms = searchTerm.split(" ");
-      const roles = ["Developer", "Engineer", "Specialist", "Manager", "Consultant"];
-      
-      for (let i = 0; i < 3; i++) {
-        results.push({
-          title: `${terms[0]} ${roles[i % roles.length]}`,
-          company: "No results found",
-          location: "Try different search terms",
-          date: "N/A",
-          url: `https://www.google.com/search?q=${encodeURIComponent(searchTerm)}`,
-          snippet: `No real job listings found for "${searchTerm}". Try modifying your search terms or checking external job boards directly.`,
-          source: "Fallback"
-        });
-      }
-    }
-    
+    // No fallback generation, just return whatever real results we found
     // Add unique identifiers to help with display
     const enhancedResults = results.map((result, index) => ({
       ...result,
@@ -492,7 +473,7 @@ serve(async (req) => {
     }));
     
     // Log results breakdown
-    console.log(`Returning ${enhancedResults.length} job listings (${enhancedResults.filter(r => r.source !== 'Fallback').length} real, ${enhancedResults.filter(r => r.source === 'Fallback').length} fallback)`);
+    console.log(`Returning ${enhancedResults.length} real job listings`);
 
     return new Response(
       JSON.stringify({ 

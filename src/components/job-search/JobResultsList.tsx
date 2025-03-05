@@ -1,7 +1,7 @@
 
 import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, Loader2, MapPin, Calendar, Building, AlertCircle, CheckCircle, DollarSign, Briefcase } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, Calendar, Building, CheckCircle, DollarSign, Briefcase } from "lucide-react";
 import { SearchResult } from "./types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,9 +12,8 @@ interface JobResultsListProps {
 }
 
 const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching }) => {
-  // Count real vs fallback results
+  // Filter out fallback/AI results to only show real listings
   const realResults = results.filter(r => r.source !== 'Fallback');
-  const fallbackResults = results.filter(r => r.source === 'Fallback');
   
   if (isSearching) {
     return (
@@ -34,29 +33,30 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
     );
   }
 
+  if (realResults.length === 0) {
+    return (
+      <div className="text-center p-6 text-muted-foreground">
+        <p>No real job listings found for this search term.</p>
+        <p className="mt-2 text-sm">Try a different search term or use the "External" button to search job boards directly.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {realResults.length > 0 && fallbackResults.length > 0 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground px-2">
-          <div className="flex items-center gap-2">
-            <span>Found {realResults.length} real listings and {fallbackResults.length} generated listings</span>
-          </div>
+      <div className="flex items-center justify-between text-sm text-muted-foreground px-2">
+        <div className="flex items-center gap-2">
+          <span>Found {realResults.length} job listings</span>
         </div>
-      )}
+      </div>
       
       <ScrollArea className="h-[400px] w-full">
         <div className="space-y-4 p-1">
-          {results.map((result, index) => {
-            const isFallback = result.source === 'Fallback';
-            
+          {realResults.map((result, index) => {
             return (
               <div
                 key={index}
-                className={`p-4 border rounded-md bg-background/50 transition-all ${
-                  isFallback 
-                    ? 'border-yellow-500/30 hover:border-yellow-500/50' 
-                    : 'border-green-500/30 hover:border-green-500/50'
-                }`}
+                className="p-4 border rounded-md bg-background/50 transition-all border-green-500/30 hover:border-green-500/50"
               >
                 <div className="flex justify-between items-start">
                   <h3 className="font-semibold text-primary">{result.title}</h3>
@@ -77,19 +77,10 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                     <span>{result.company}</span>
                   </div>
                   
-                  {isFallback && (
-                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/30 text-xs">
-                      <AlertCircle size={12} className="mr-1" />
-                      AI Generated
-                    </Badge>
-                  )}
-                  
-                  {!isFallback && (
-                    <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30 text-xs">
-                      <CheckCircle size={12} className="mr-1" />
-                      {result.source}
-                    </Badge>
-                  )}
+                  <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30 text-xs">
+                    <CheckCircle size={12} className="mr-1" />
+                    {result.source}
+                  </Badge>
                 </div>
                 
                 <div className="flex items-center text-sm text-muted-foreground mt-1 flex-wrap gap-3">
