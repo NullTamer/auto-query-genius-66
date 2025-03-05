@@ -47,10 +47,15 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       return;
     }
     
-    // Open in all three providers
-    window.open(getSearchUrl("google"), "_blank");
-    window.open(getSearchUrl("linkedin"), "_blank");
-    window.open(getSearchUrl("indeed"), "_blank");
+    // Fixed: Open each provider in a separate statement to ensure all open
+    const googleUrl = getSearchUrl("google");
+    const linkedinUrl = getSearchUrl("linkedin");
+    const indeedUrl = getSearchUrl("indeed");
+    
+    // Use setTimeout to avoid popup blockers
+    setTimeout(() => window.open(googleUrl, "_blank"), 100);
+    setTimeout(() => window.open(linkedinUrl, "_blank"), 300);
+    setTimeout(() => window.open(indeedUrl, "_blank"), 500);
     
     toast.success("Opened search in all job boards");
   };
