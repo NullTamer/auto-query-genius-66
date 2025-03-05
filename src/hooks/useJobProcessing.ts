@@ -10,28 +10,34 @@ export const useJobProcessing = () => {
   const [currentJobId, setCurrentJobId] = useState<number | null>(null);
   const processingRef = useRef(false);
 
-  const processJob = useCallback(async (jobDescription: string) => {
+  const processJob = useCallback(async (jobDescription: string, jobUrl?: string) => {
     if (processingRef.current) {
       console.log('Already processing a job, skipping');
       return null;
     }
 
     try {
-      const session = await supabase.auth.getSession();
-      console.log('Current session:', session);
-
+      // Get the current session to include authentication
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Error getting authentication session:', sessionError);
+        // Continue as anonymous user if session can't be retrieved
+      }
+      
       processingRef.current = true;
       setIsProcessing(true);
       setHasError(false);
       
-      console.log('Invoking edge function to process job description');
+      console.log('Invoking edge function to process job description', jobUrl ? `from URL: ${jobUrl}` : '');
       
-      // Invoke the edge function instead of direct database manipulation
+      // Invoke the edge function with improved payload
       const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
         body: { 
           jobDescription,
-          // Pass the user ID if available, otherwise proceed as guest
-          userId: session.data.session?.user?.id
+          jobUrl,
+          // Pass authentication data if available
+          userId: sessionData?.session?.user?.id
         }
       });
       
@@ -57,11 +63,49 @@ export const useJobProcessing = () => {
       console.error('Error processing job:', error);
       toast.error('Failed to process job posting');
       setHasError(true);
-      setIsProcessing(false); // Important: Clear processing state on error
       return null;
     } finally {
       processingRef.current = false;
       setIsProcessing(false); // Ensure processing state is cleared in all cases
+    }
+  }, []);
+
+  const refreshJobData = useCallback(async (jobId: number) => {
+    if (!jobId) {
+      console.error('Cannot refresh job data: No job ID provided');
+      return false;
+    }
+    
+    try {
+      setIsProcessing(true);
+      
+      // Get fresh data for the job
+      const { data, error } = await supabase
+        .from('job_postings')
+        .select('*, extracted_keywords(*)')
+        .eq('id', jobId)
+        .single();
+      
+      if (error) {
+        console.error('Error refreshing job data:', error);
+        throw error;
+      }
+      
+      if (!data) {
+        console.error('No job found with ID:', jobId);
+        return false;
+      }
+      
+      console.log('Job data refreshed successfully:', data);
+      setLastScrapeTime(new Date().toISOString());
+      return true;
+    } catch (error) {
+      console.error('Error refreshing job data:', error);
+      toast.error('Failed to refresh job data');
+      setHasError(true);
+      return false;
+    } finally {
+      setIsProcessing(false);
     }
   }, []);
 
@@ -74,6 +118,7 @@ export const useJobProcessing = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob
+    processJob,
+    refreshJobData
   };
 };
