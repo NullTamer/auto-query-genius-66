@@ -13,3 +13,11 @@ export interface SearchResult {
   timestamp?: string;
   isReal?: boolean;
 }
+
+export interface SearchMetadata {
+  query: string;
+  provider: string;
+  timestamp: string;
+  realResultsCount: number;
+  fallbackResultsCount: number;
+}

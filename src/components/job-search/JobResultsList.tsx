@@ -1,7 +1,7 @@
 
 import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, Loader2, MapPin, Calendar, Building, AlertCircle } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, Calendar, Building, AlertCircle, CheckCircle } from "lucide-react";
 import { SearchResult } from "./types";
 import { Badge } from "@/components/ui/badge";
 
@@ -54,7 +54,7 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                 className={`p-4 border rounded-md bg-background/50 transition-all ${
                   isFallback 
                     ? 'border-yellow-500/30 hover:border-yellow-500/50' 
-                    : 'border-primary/20 hover:border-primary/50'
+                    : 'border-green-500/30 hover:border-green-500/50'
                 }`}
               >
                 <div className="flex justify-between items-start">
@@ -79,12 +79,13 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                   {isFallback && (
                     <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/30 text-xs">
                       <AlertCircle size={12} className="mr-1" />
-                      Generated
+                      AI Generated
                     </Badge>
                   )}
                   
                   {!isFallback && (
                     <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30 text-xs">
+                      <CheckCircle size={12} className="mr-1" />
                       {result.source}
                     </Badge>
                   )}
