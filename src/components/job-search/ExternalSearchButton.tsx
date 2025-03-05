@@ -47,11 +47,17 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       return;
     }
     
-    // Fixed: Open each provider in a new window to ensure all tabs open
+    // Use an array for better handling of multiple windows
+    const providers: SearchProvider[] = ["google", "linkedin", "indeed"];
+    
     try {
-      window.open(getSearchUrl("google"), "_blank");
-      setTimeout(() => window.open(getSearchUrl("linkedin"), "_blank"), 300);
-      setTimeout(() => window.open(getSearchUrl("indeed"), "_blank"), 600);
+      // Open each provider in a new window with proper delays
+      providers.forEach((provider, index) => {
+        setTimeout(() => {
+          const newWindow = window.open(getSearchUrl(provider), `_blank_${provider}`);
+          if (!newWindow) throw new Error("Popup blocked");
+        }, index * 300); // 300ms delay between each window open
+      });
       
       toast.success("Opened search in all job boards");
     } catch (error) {
