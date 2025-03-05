@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { SearchProvider } from "./types";
+import { toast } from "sonner";
 
 interface SearchFormProps {
   searchTerm: string;
@@ -26,6 +27,11 @@ const SearchForm: React.FC<SearchFormProps> = ({
   const navigate = useNavigate();
 
   const handleSearch = () => {
+    if (!searchTerm.trim()) {
+      toast.error("Please enter a search term or use generated query");
+      return;
+    }
+
     if (navigateToSearch && searchTerm) {
       navigate(`/search?q=${encodeURIComponent(searchTerm)}&provider=${searchProvider}`);
     } else {

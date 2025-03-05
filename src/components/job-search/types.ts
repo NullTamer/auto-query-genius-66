@@ -12,6 +12,8 @@ export interface SearchResult {
   id?: string;
   timestamp?: string;
   isReal?: boolean;
+  salary?: string;
+  jobType?: string;
 }
 
 export interface SearchMetadata {

@@ -1,7 +1,7 @@
 
 import React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, Loader2, MapPin, Calendar, Building, AlertCircle, CheckCircle } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, Calendar, Building, AlertCircle, CheckCircle, DollarSign, Briefcase } from "lucide-react";
 import { SearchResult } from "./types";
 import { Badge } from "@/components/ui/badge";
 
@@ -102,6 +102,18 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
                     <div className="flex items-center">
                       <Calendar size={14} className="mr-1" />
                       <span>{result.date}</span>
+                    </div>
+                  )}
+                  {result.salary && (
+                    <div className="flex items-center">
+                      <DollarSign size={14} className="mr-1" />
+                      <span>{result.salary}</span>
+                    </div>
+                  )}
+                  {result.jobType && (
+                    <div className="flex items-center">
+                      <Briefcase size={14} className="mr-1" />
+                      <span>{result.jobType}</span>
                     </div>
                   )}
                 </div>
