@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Search, Loader2 } from "lucide-react";
@@ -37,19 +38,20 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     arbeitnow: false,
     jobdataapi: false,
     usajobs: false,
-    remoteok: false,
-    glassdoor: false
+    remoteok: false
   });
   const location = useLocation();
   const navigate = useNavigate();
   const isSearchPage = location.pathname === "/search";
 
+  // Initialize searchTerm with query when component mounts or query changes
   useEffect(() => {
     if (query) {
       setSearchTerm(query);
     }
   }, [query]);
 
+  // If we're on the search page, get query and provider from URL
   useEffect(() => {
     if (isSearchPage) {
       const searchParams = new URLSearchParams(location.search);
@@ -60,9 +62,10 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
         setSearchTerm(urlQuery);
       }
       
-      if (urlProvider && ["google", "linkedin", "indeed", "arbeitnow", "jobdataapi", "glassdoor"].includes(urlProvider)) {
+      if (urlProvider && ["google", "linkedin", "indeed", "arbeitnow", "jobdataapi"].includes(urlProvider)) {
         setSearchProvider(urlProvider);
         
+        // Update selected boards based on provider
         setSelectedBoards(prev => ({
           ...Object.keys(prev).reduce((acc, key) => ({
             ...acc,
@@ -71,18 +74,21 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
         }));
       }
       
+      // Auto-search when navigating to search page with a query
       if (urlQuery && !results.length) {
         handleSearch(urlQuery, urlProvider || undefined);
       }
     }
   }, [isSearchPage, location.search]);
 
+  // Update search term when selected terms change
   useEffect(() => {
     if (selectedTerms.length > 0) {
       setSearchTerm(selectedTerms.join(" "));
     }
   }, [selectedTerms]);
 
+  // Update search parameters in URL when provider or searchTerm changes on the search page
   useEffect(() => {
     if (isSearchPage && searchTerm) {
       const searchParams = new URLSearchParams(location.search);
@@ -104,6 +110,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     }
   }, [searchProvider, searchTerm, isSearchPage, navigate, location.search]);
 
+  // Handle term selection/deselection
   const handleTermToggle = (term: string) => {
     setSelectedTerms(prev => 
       prev.includes(term)
@@ -112,14 +119,17 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     );
   };
 
+  // Handle selecting a recommended combination
   const handleSelectCombination = (terms: string[]) => {
     setSelectedTerms(terms);
     toast.success(`Applied search combination with ${terms.length} terms`);
   };
 
+  // Handle provider change
   const handleProviderChange = (provider: SearchProvider) => {
     setSearchProvider(provider);
     
+    // Update selected boards to match the provider
     setSelectedBoards(prev => ({
       ...prev,
       linkedin: provider === "linkedin",
@@ -128,14 +138,15 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
       arbeitnow: provider === "arbeitnow",
       jobdataapi: provider === "jobdataapi",
       usajobs: provider === "usajobs",
-      remoteok: provider === "remoteok",
-      glassdoor: provider === "glassdoor"
+      remoteok: provider === "remoteok"
     }));
     
+    // If we already have results and are on the search page, search again with new provider
     if (results.length > 0 && isSearchPage) {
       handleSearch(searchTerm, provider);
     }
     
+    // Update URL to include provider
     if (isSearchPage) {
       const searchParams = new URLSearchParams(location.search);
       searchParams.set("provider", provider);
@@ -143,12 +154,15 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     }
   };
 
+  // Handle board selection change
   const handleBoardSelectionChange = (boards: JobBoardSelection) => {
     setSelectedBoards(boards);
     
+    // Count selected boards
     const selectedCount = Object.values(boards).filter(Boolean).length;
     
     if (selectedCount === 0) {
+      // If no boards selected, default to Google
       setSelectedBoards(prev => ({...prev, google: true}));
     }
   };
@@ -168,15 +182,19 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     try {
       console.log(`Searching for "${finalSearchTerm}" on ${finalProvider}`);
       
+      // Determine whether to search on multiple boards or just one
       const multipleBoards = Object.values(selectedBoards).filter(Boolean).length > 1;
       
+      // Create the body for the fetch request
       const requestBody: any = { 
         searchTerm: finalSearchTerm
       };
       
+      // If searching on a single provider, specify which one
       if (!multipleBoards) {
         requestBody.provider = finalProvider;
       } else {
+        // If searching on multiple boards, send the selected boards
         requestBody.providers = Object.entries(selectedBoards)
           .filter(([_, selected]) => selected)
           .map(([provider]) => provider);
@@ -184,6 +202,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
         console.log(`Searching on multiple providers: ${requestBody.providers.join(', ')}`);
       }
       
+      // Call the edge function to get job listings
       const response = await supabase.functions.invoke('fetch-job-listings', {
         body: requestBody
       });
@@ -191,6 +210,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
       if (!response.error && response.data.success) {
         setResults(response.data.results);
         
+        // Save to search history if we're logged in
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
@@ -206,6 +226,7 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
           console.error("Failed to save search history:", historyError);
         }
         
+        // Show success toast
         toast.success(`Found ${response.data.results.length} job listings`);
       } else {
         const error = response.error || (response.data && !response.data.success ? response.data.error : "Unknown error");

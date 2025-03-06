@@ -42,9 +42,6 @@ const ProviderToggle: React.FC<ProviderToggleProps> = ({
       <ToggleGroupItem value="remoteok" className="cyber-card">
         RemoteOK
       </ToggleGroupItem>
-      <ToggleGroupItem value="glassdoor" className="cyber-card">
-        Glassdoor
-      </ToggleGroupItem>
     </ToggleGroup>
   );
 };

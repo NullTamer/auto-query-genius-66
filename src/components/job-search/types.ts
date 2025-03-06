@@ -1,5 +1,5 @@
 
-export type SearchProvider = "linkedin" | "indeed" | "google" | "arbeitnow" | "jobdataapi" | "usajobs" | "remoteok" | "glassdoor";
+export type SearchProvider = "linkedin" | "indeed" | "google" | "arbeitnow" | "jobdataapi" | "usajobs" | "remoteok";
 
 export interface SearchResult {
   title: string;
@@ -32,5 +32,4 @@ export interface JobBoardSelection {
   jobdataapi: boolean;
   usajobs: boolean;
   remoteok: boolean;
-  glassdoor: boolean;
 }
