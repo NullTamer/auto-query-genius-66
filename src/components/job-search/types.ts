@@ -1,5 +1,5 @@
 
-export type SearchProvider = "linkedin" | "indeed" | "google" | "arbeitnow";
+export type SearchProvider = "linkedin" | "indeed" | "google" | "arbeitnow" | "jobdataapi";
 
 export interface SearchResult {
   title: string;
@@ -22,4 +22,12 @@ export interface SearchMetadata {
   timestamp: string;
   realResultsCount: number;
   fallbackResultsCount: number;
+}
+
+export interface JobBoardSelection {
+  linkedin: boolean;
+  indeed: boolean;
+  google: boolean;
+  arbeitnow: boolean;
+  jobdataapi: boolean;
 }

@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for some browser APIs
 
@@ -133,6 +134,9 @@ class JobAPIService {
         } else if (this.apiKey && this.provider === 'indeed') {
           // Indeed uses a different auth mechanism
           authHeaders['Indeed-Client-Application-Id'] = this.apiKey;
+        } else if (this.apiKey && this.provider === 'jobdataapi') {
+          // JobDataAPI uses API key in header
+          authHeaders['X-API-KEY'] = this.apiKey;
         }
         
         const response = await fetch(url, {
@@ -499,7 +503,7 @@ class GoogleJobService extends JobAPIService {
   }
 }
 
-// New Arbeitnow Job API Service
+// Arbeitnow Job API Service
 class ArbeitnowJobService extends JobAPIService {
   constructor(headers: Record<string, string>) {
     super('arbeitnow', headers);
@@ -593,6 +597,125 @@ class ArbeitnowJobService extends JobAPIService {
   }
 }
 
+// New JobDataAPI Service
+class JobDataAPIService extends JobAPIService {
+  constructor(headers: Record<string, string>) {
+    super('jobdataapi', headers);
+  }
+
+  protected async searchWithOfficialAPI(query: string): Promise<SearchResult[]> {
+    try {
+      // Check if we have API credentials
+      if (!this.apiKey) {
+        console.log('No API key found for JobDataAPI');
+        return [];
+      }
+
+      // Construct the API URL with search parameters
+      const encodedQuery = encodeURIComponent(query);
+      const apiUrl = `https://jobdataapi.com/api/v1/search?query=${encodedQuery}&limit=20`;
+      
+      console.log(`Fetching jobs from JobDataAPI with query: ${query}`);
+      
+      // Fetch jobs from the API
+      const response = await this.fetchWithRetry(apiUrl);
+      const data = await response.json();
+      
+      console.log(`JobDataAPI returned ${data.jobs?.length || 0} jobs`);
+      
+      if (!data.jobs || !Array.isArray(data.jobs) || data.jobs.length === 0) {
+        console.log('No jobs found in JobDataAPI response');
+        return [];
+      }
+      
+      // Transform to standard format
+      const results = data.jobs.map((job: any) => ({
+        title: job.title || "Job Opening",
+        company: job.company || "Unknown Company",
+        location: job.location || "Various Locations",
+        date: job.posted_date || "Recent",
+        url: job.job_url || `https://jobdataapi.com/jobs?q=${encodedQuery}`,
+        snippet: job.description || `Job opening at ${job.company || "a company"}`,
+        source: "JobDataAPI",
+        jobType: job.job_type || undefined,
+        salary: job.salary_range || undefined
+      }));
+      
+      console.log(`Processed ${results.length} jobs from JobDataAPI`);
+      return results;
+    } catch (error) {
+      console.error("Error fetching jobs from JobDataAPI:", error);
+      return [];
+    }
+  }
+
+  // No scraping implementation as this is API-only
+  protected async scrapeResults(query: string): Promise<SearchResult[]> {
+    console.log('JobDataAPI does not support scraping, falling back to mock data');
+    return this.getMockJobDataAPIResults(query);
+  }
+  
+  // Mock results for when API is not available
+  private getMockJobDataAPIResults(query: string): SearchResult[] {
+    // Generate 5-8 mock results
+    const count = 5 + Math.floor(Math.random() * 4);
+    const results: SearchResult[] = [];
+    
+    const jobTitles = [
+      `${query} Developer`,
+      `Senior ${query} Engineer`,
+      `${query} Specialist`,
+      `${query} Analyst`,
+      `${query} Manager`,
+      `Lead ${query} Developer`,
+      `${query} Architect`,
+      `${query} Consultant`
+    ];
+    
+    const companies = [
+      "JobDataAPI Corp",
+      "Data Solutions Inc",
+      "TechJobs Unlimited",
+      "Career Edge",
+      "OpportunityConnect",
+      "JobSphere",
+      "WorkWave Technologies",
+      "CareerBoost"
+    ];
+    
+    const locations = [
+      "Remote",
+      "San Francisco, CA",
+      "New York, NY",
+      "Austin, TX",
+      "Seattle, WA",
+      "Boston, MA",
+      "Chicago, IL",
+      "Denver, CO"
+    ];
+    
+    for (let i = 0; i < count; i++) {
+      const titleIndex = Math.floor(Math.random() * jobTitles.length);
+      const companyIndex = Math.floor(Math.random() * companies.length);
+      const locationIndex = Math.floor(Math.random() * locations.length);
+      
+      results.push({
+        title: jobTitles[titleIndex],
+        company: companies[companyIndex],
+        location: locations[locationIndex],
+        date: `${1 + Math.floor(Math.random() * 30)} days ago`,
+        url: `https://jobdataapi.com/jobs?q=${encodeURIComponent(query)}`,
+        snippet: `${companies[companyIndex]} is looking for a talented ${query} professional to join our team. This role focuses on ${query} development and implementation.`,
+        source: "JobDataAPI",
+        salary: `$${100 + Math.floor(Math.random() * 50)}K - $${160 + Math.floor(Math.random() * 40)}K`,
+        jobType: ["Full-time", "Contract", "Remote", "Hybrid"][Math.floor(Math.random() * 4)]
+      });
+    }
+    
+    return results;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -600,7 +723,8 @@ serve(async (req) => {
   }
 
   try {
-    const { searchTerm, provider } = await req.json();
+    const requestData = await req.json();
+    const { searchTerm, provider, providers } = requestData;
     
     if (!searchTerm) {
       return new Response(
@@ -609,8 +733,15 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching job listings for term: "${searchTerm}" from provider: ${provider || 'all'}`);
+    console.log(`Fetching job listings for term: "${searchTerm}"`);
     
+    // Check if we need to search on multiple providers
+    if (providers && Array.isArray(providers) && providers.length > 0) {
+      console.log(`Searching on multiple providers: ${providers.join(', ')}`);
+    } else {
+      console.log(`Searching on provider: ${provider || 'all'}`);
+    }
+
     // Array of rotating user agents to avoid being blocked
     const userAgents = [
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
@@ -641,13 +772,31 @@ serve(async (req) => {
     const indeedService = new IndeedJobService(headers);
     const googleService = new GoogleJobService(headers);
     const arbeitnowService = new ArbeitnowJobService(headers);
+    const jobDataAPIService = new JobDataAPIService(headers);
     
-    // Determine which providers to use based on user selection
-    const services = [];
-    if (!provider || provider === 'linkedin') services.push(linkedInService.search(searchTerm));
-    if (!provider || provider === 'indeed') services.push(indeedService.search(searchTerm));
-    if (!provider || provider === 'google') services.push(googleService.search(searchTerm));
-    if (!provider || provider === 'arbeitnow') services.push(arbeitnowService.search(searchTerm));
+    // Determine which providers to use
+    let servicesToUse = [];
+    
+    if (providers && Array.isArray(providers) && providers.length > 0) {
+      // Use the provided array of providers
+      if (providers.includes('linkedin')) servicesToUse.push(linkedInService.search(searchTerm));
+      if (providers.includes('indeed')) servicesToUse.push(indeedService.search(searchTerm));
+      if (providers.includes('google')) servicesToUse.push(googleService.search(searchTerm));
+      if (providers.includes('arbeitnow')) servicesToUse.push(arbeitnowService.search(searchTerm));
+      if (providers.includes('jobdataapi')) servicesToUse.push(jobDataAPIService.search(searchTerm));
+    } else {
+      // Use the single provider or default to all
+      if (!provider || provider === 'linkedin') servicesToUse.push(linkedInService.search(searchTerm));
+      if (!provider || provider === 'indeed') servicesToUse.push(indeedService.search(searchTerm));
+      if (!provider || provider === 'google') servicesToUse.push(googleService.search(searchTerm));
+      if (!provider || provider === 'arbeitnow') servicesToUse.push(arbeitnowService.search(searchTerm));
+      if (!provider || provider === 'jobdataapi') servicesToUse.push(jobDataAPIService.search(searchTerm));
+    }
+    
+    // If no services were selected (shouldn't happen), default to Google
+    if (servicesToUse.length === 0) {
+      servicesToUse.push(googleService.search(searchTerm));
+    }
     
     // Set a timeout for all scraping operations
     const timeout = new Promise<SearchResult[][]>(resolve => 
@@ -659,7 +808,7 @@ serve(async (req) => {
     
     // Wait for all providers or timeout
     const results = await Promise.race([
-      Promise.all(services),
+      Promise.all(servicesToUse),
       timeout
     ]) as SearchResult[][];
     

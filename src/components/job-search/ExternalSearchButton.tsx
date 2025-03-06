@@ -3,18 +3,20 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { SearchProvider } from "./types";
+import { JobBoardSelection, SearchProvider } from "./types";
 
 interface ExternalSearchButtonProps {
   searchTerm: string;
   query: string;
   searchProvider: SearchProvider;
+  selectedBoards?: JobBoardSelection;
 }
 
 const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
   searchTerm,
   query,
   searchProvider,
+  selectedBoards,
 }) => {
   const getSearchUrl = (provider: SearchProvider) => {
     const searchQuery = encodeURIComponent(searchTerm || query);
@@ -28,6 +30,8 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         return `https://www.google.com/search?q=${searchQuery}+jobs`;
       case "arbeitnow":
         return `https://www.arbeitnow.com/jobs/${searchQuery}`;
+      case "jobdataapi":
+        return `https://www.google.com/search?q=${searchQuery}+jobs`;
       default:
         return `https://www.google.com/search?q=${searchQuery}+jobs`;
     }
@@ -49,8 +53,26 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       return;
     }
     
-    // Use an array for better handling of multiple windows
-    const providers: SearchProvider[] = ["google", "linkedin", "indeed", "arbeitnow"];
+    // Determine which providers to open based on selectedBoards
+    const providers: SearchProvider[] = [];
+    
+    if (selectedBoards) {
+      // Use selected boards if available
+      if (selectedBoards.google) providers.push("google");
+      if (selectedBoards.linkedin) providers.push("linkedin");
+      if (selectedBoards.indeed) providers.push("indeed");
+      if (selectedBoards.arbeitnow) providers.push("arbeitnow");
+      if (selectedBoards.jobdataapi) providers.push("jobdataapi");
+    } else {
+      // Default to all providers if no selection
+      providers.push("google", "linkedin", "indeed", "arbeitnow", "jobdataapi");
+    }
+    
+    // If no boards are selected, show error
+    if (providers.length === 0) {
+      toast.error("Please select at least one job board");
+      return;
+    }
     
     try {
       // Open each provider in a new window with proper delays
@@ -62,10 +84,10 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         }, index * 300); // 300ms delay between each window open
       });
       
-      toast.success("Opened search in all job boards");
+      toast.success(`Opened search in ${providers.length} job board${providers.length > 1 ? 's' : ''}`);
     } catch (error) {
       console.error("Failed to open job boards:", error);
-      toast.error("Failed to open all job boards. Please check your popup blocker settings.");
+      toast.error("Failed to open job boards. Please check your popup blocker settings.");
     }
   };
 
@@ -84,10 +106,10 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         onClick={openAllJobBoards}
         variant="outline"
         className="cyber-card flex items-center gap-2 hover:neon-glow transition-all whitespace-nowrap"
-        title="Open in all job boards"
+        title="Open in selected job boards"
       >
         <ExternalLink size={16} />
-        All Boards
+        {selectedBoards ? "Selected Boards" : "All Boards"}
       </Button>
     </div>
   );

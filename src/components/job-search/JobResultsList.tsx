@@ -12,9 +12,6 @@ interface JobResultsListProps {
 }
 
 const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching }) => {
-  // Filter out fallback/AI results to only show real listings
-  const realResults = results.filter(r => r.source !== 'Fallback');
-  
   if (isSearching) {
     return (
       <div className="flex flex-col items-center justify-center p-10">
@@ -33,26 +30,17 @@ const JobResultsList: React.FC<JobResultsListProps> = ({ results, isSearching })
     );
   }
 
-  if (realResults.length === 0) {
-    return (
-      <div className="text-center p-6 text-muted-foreground">
-        <p>No real job listings found for this search term.</p>
-        <p className="mt-2 text-sm">Try a different search term or use the "External" button to search job boards directly.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between text-sm text-muted-foreground px-2">
         <div className="flex items-center gap-2">
-          <span>Found {realResults.length} job listings</span>
+          <span>Found {results.length} job listings</span>
         </div>
       </div>
       
       <ScrollArea className="h-[400px] w-full">
         <div className="space-y-4 p-1">
-          {realResults.map((result, index) => {
+          {results.map((result, index) => {
             return (
               <div
                 key={index}

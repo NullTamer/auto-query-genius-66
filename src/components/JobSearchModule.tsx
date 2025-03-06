@@ -1,19 +1,19 @@
 
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Search, Loader2, Info } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import SearchForm from "./job-search/SearchForm";
 import ProviderToggle from "./job-search/ProviderToggle";
 import JobResultsList from "./job-search/JobResultsList";
 import ExternalSearchButton from "./job-search/ExternalSearchButton";
 import QueryTermSelector from "./job-search/QueryTermSelector";
-import { SearchProvider, SearchResult } from "./job-search/types";
+import JobBoardSelector from "./job-search/JobBoardSelector";
+import { JobBoardSelection, SearchProvider, SearchResult } from "./job-search/types";
 import { supabase } from "@/integrations/supabase/client";
 import { Keyword } from "@/hooks/useKeywords";
 import RecommendedSearchModule from "./recommended-search/RecommendedSearchModule";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface JobSearchModuleProps {
   query: string;
@@ -31,6 +31,13 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchProvider, setSearchProvider] = useState<SearchProvider>(initialProvider || "google");
+  const [selectedBoards, setSelectedBoards] = useState<JobBoardSelection>({
+    linkedin: false,
+    indeed: false,
+    google: true,
+    arbeitnow: false,
+    jobdataapi: false
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const isSearchPage = location.pathname === "/search";
@@ -53,8 +60,16 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
         setSearchTerm(urlQuery);
       }
       
-      if (urlProvider && (urlProvider === "google" || urlProvider === "linkedin" || urlProvider === "indeed")) {
+      if (urlProvider && ["google", "linkedin", "indeed", "arbeitnow", "jobdataapi"].includes(urlProvider)) {
         setSearchProvider(urlProvider);
+        
+        // Update selected boards based on provider
+        setSelectedBoards(prev => ({
+          ...Object.keys(prev).reduce((acc, key) => ({
+            ...acc,
+            [key]: key === urlProvider
+          }), {} as JobBoardSelection)
+        }));
       }
       
       // Auto-search when navigating to search page with a query
@@ -112,6 +127,16 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
   const handleProviderChange = (provider: SearchProvider) => {
     setSearchProvider(provider);
     
+    // Update selected boards to match the provider
+    setSelectedBoards(prev => ({
+      ...prev,
+      linkedin: provider === "linkedin",
+      indeed: provider === "indeed",
+      google: provider === "google",
+      arbeitnow: provider === "arbeitnow",
+      jobdataapi: provider === "jobdataapi"
+    }));
+    
     // If we already have results and are on the search page, search again with new provider
     if (results.length > 0 && isSearchPage) {
       handleSearch(searchTerm, provider);
@@ -122,6 +147,19 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
       const searchParams = new URLSearchParams(location.search);
       searchParams.set("provider", provider);
       navigate(`/search?${searchParams.toString()}`, { replace: true });
+    }
+  };
+
+  // Handle board selection change
+  const handleBoardSelectionChange = (boards: JobBoardSelection) => {
+    setSelectedBoards(boards);
+    
+    // Count selected boards
+    const selectedCount = Object.values(boards).filter(Boolean).length;
+    
+    if (selectedCount === 0) {
+      // If no boards selected, default to Google
+      setSelectedBoards(prev => ({...prev, google: true}));
     }
   };
 
@@ -140,86 +178,56 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     try {
       console.log(`Searching for "${finalSearchTerm}" on ${finalProvider}`);
       
-      // Add retry logic to improve chances of getting real results
-      let attempts = 0;
-      const maxAttempts = 2;
-      let successfulSearch = false;
-      let data: any;
+      // Determine whether to search on multiple boards or just one
+      const multipleBoards = Object.values(selectedBoards).filter(Boolean).length > 1;
       
-      while (attempts < maxAttempts && !successfulSearch) {
-        attempts++;
-        
-        // Call the edge function to get job listings
-        const response = await supabase.functions.invoke('fetch-job-listings', {
-          body: { 
-            searchTerm: finalSearchTerm,
-            provider: finalProvider
-          }
-        });
-        
-        if (!response.error && response.data.success) {
-          data = response.data;
-          
-          // Check if we got real results
-          const realResultsCount = data.results.filter(
-            (r: SearchResult) => !r.source.includes('Alternative') && r.source !== 'Fallback'
-          ).length;
-          
-          if (realResultsCount > 0) {
-            successfulSearch = true;
-            console.log(`Got ${realResultsCount} real results on attempt ${attempts}`);
-          } else if (attempts < maxAttempts) {
-            console.log(`No real results on attempt ${attempts}, retrying...`);
-            // Short delay before retry
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        } else {
-          // If there's an error, don't retry
-          const error = response.error || (response.data && !response.data.success ? response.data.error : "Unknown error");
-          console.error("Edge function error:", error);
-          throw new Error("Failed to fetch job listings");
-        }
-      }
+      // Create the body for the fetch request
+      const requestBody: any = { 
+        searchTerm: finalSearchTerm
+      };
       
-      if (!data) {
-        throw new Error("Failed to fetch job listings after multiple attempts");
-      }
-      
-      // Count real vs. fallback results for better user feedback
-      const realResults = data.results.filter(
-        (r: SearchResult) => !r.source.includes('Alternative') && r.source !== 'Fallback'
-      );
-      const fallbackResults = data.results.filter(
-        (r: SearchResult) => r.source.includes('Alternative') || r.source === 'Fallback'
-      );
-      
-      setResults(data.results);
-      
-      // Save to search history if we're logged in
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await supabase.from('search_history').insert({
-            user_id: session.user.id,
-            query: finalSearchTerm,
-            provider: finalProvider,
-            results_count: data.results.length,
-            real_results_count: realResults.length
-          });
-        }
-      } catch (historyError) {
-        console.error("Failed to save search history:", historyError);
-      }
-      
-      // Show appropriate toast based on result types
-      if (realResults.length > 0) {
-        if (fallbackResults.length > 0) {
-          toast.success(`Found ${realResults.length} real and ${fallbackResults.length} generated job listings`);
-        } else {
-          toast.success(`Found ${realResults.length} job listings on ${finalProvider}`);
-        }
+      // If searching on a single provider, specify which one
+      if (!multipleBoards) {
+        requestBody.provider = finalProvider;
       } else {
-        toast.info(`Generated ${fallbackResults.length} job listings based on your search`);
+        // If searching on multiple boards, send the selected boards
+        requestBody.providers = Object.entries(selectedBoards)
+          .filter(([_, selected]) => selected)
+          .map(([provider]) => provider);
+          
+        console.log(`Searching on multiple providers: ${requestBody.providers.join(', ')}`);
+      }
+      
+      // Call the edge function to get job listings
+      const response = await supabase.functions.invoke('fetch-job-listings', {
+        body: requestBody
+      });
+      
+      if (!response.error && response.data.success) {
+        setResults(response.data.results);
+        
+        // Save to search history if we're logged in
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            await supabase.from('search_history').insert({
+              user_id: session.user.id,
+              query: finalSearchTerm,
+              provider: multipleBoards ? 'multiple' : finalProvider,
+              results_count: response.data.results.length,
+              real_results_count: response.data.results.length
+            });
+          }
+        } catch (historyError) {
+          console.error("Failed to save search history:", historyError);
+        }
+        
+        // Show success toast
+        toast.success(`Found ${response.data.results.length} job listings`);
+      } else {
+        const error = response.error || (response.data && !response.data.success ? response.data.error : "Unknown error");
+        console.error("Edge function error:", error);
+        throw new Error("Failed to fetch job listings");
       }
       
     } catch (error) {
@@ -256,13 +264,6 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
             />
           )}
           
-          <Alert variant="default" className="bg-blue-500/10 text-blue-500 border border-blue-500/20 mb-4">
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              Results include both real job listings and AI-generated listings when real data can't be retrieved.
-            </AlertDescription>
-          </Alert>
-          
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="flex-grow">
               <SearchForm
@@ -278,11 +279,19 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
               searchTerm={searchTerm}
               query={query}
               searchProvider={searchProvider}
+              selectedBoards={selectedBoards}
             />
           </div>
           
           <ProviderToggle
             searchProvider={searchProvider}
+            onProviderChange={handleProviderChange}
+          />
+          
+          <JobBoardSelector
+            selectedBoards={selectedBoards}
+            onBoardSelectionChange={handleBoardSelectionChange}
+            currentProvider={searchProvider}
             onProviderChange={handleProviderChange}
           />
           
