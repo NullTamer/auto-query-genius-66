@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { JobBoardSelection, SearchProvider } from "./types";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ExternalSearchButtonProps {
   searchTerm: string;
@@ -12,7 +13,7 @@ interface ExternalSearchButtonProps {
   selectedBoards?: JobBoardSelection;
 }
 
-// Define job board regions
+// Define job board regions for categorization
 const jobBoardRegions = {
   global: ["google", "linkedin"],
   usa: ["indeed", "usajobs", "glassdoor"],
@@ -157,6 +158,21 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
     }
   };
 
+  // Get provider display name
+  const getProviderDisplayName = (provider: SearchProvider): string => {
+    switch (provider) {
+      case "google": return "Google";
+      case "linkedin": return "LinkedIn";
+      case "indeed": return "Indeed";
+      case "usajobs": return "USA Jobs";
+      case "glassdoor": return "Glassdoor";
+      case "arbeitnow": return "ArbeitNow";
+      case "remoteok": return "RemoteOK";
+      case "jobdataapi": return "Job Data API";
+      default: return provider.charAt(0).toUpperCase() + provider.slice(1);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
@@ -180,21 +196,37 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         </Button>
       </div>
       
-      <div className="text-xs text-muted-foreground mb-1">Search by region:</div>
-      <div className="flex flex-wrap gap-2">
-        {Object.keys(jobBoardRegions).map((region) => (
-          <Button
-            key={region}
-            onClick={() => openRegionalJobBoards(region)}
-            variant="outline"
-            size="sm"
-            className="cyber-card hover:neon-glow transition-all whitespace-nowrap"
-            title={`Open job boards in ${getRegionDisplayName(region)}`}
-          >
-            {getRegionDisplayName(region)}
-          </Button>
+      <Tabs defaultValue="global" className="w-full">
+        <TabsList className="grid grid-cols-5 mb-2">
+          {Object.keys(jobBoardRegions).map((region) => (
+            <TabsTrigger key={region} value={region} className="text-xs">
+              {getRegionDisplayName(region)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        
+        {Object.entries(jobBoardRegions).map(([region, providers]) => (
+          <TabsContent key={region} value={region} className="mt-0">
+            <div className="flex flex-wrap gap-2">
+              {providers.map((provider) => (
+                <Button
+                  key={provider}
+                  onClick={() => window.open(getSearchUrl(provider as SearchProvider), "_blank")}
+                  variant="outline"
+                  size="sm"
+                  disabled={selectedBoards && !selectedBoards[provider as keyof JobBoardSelection]}
+                  className={`cyber-card hover:neon-glow transition-all whitespace-nowrap ${
+                    provider === searchProvider ? "border-primary" : ""
+                  }`}
+                  title={`Open in ${getProviderDisplayName(provider as SearchProvider)}`}
+                >
+                  {getProviderDisplayName(provider as SearchProvider)}
+                </Button>
+              ))}
+            </div>
+          </TabsContent>
         ))}
-      </div>
+      </Tabs>
     </div>
   );
 };
