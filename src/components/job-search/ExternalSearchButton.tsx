@@ -115,13 +115,13 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
   };
 
   // Open job boards by region
-  const openRegionalJobBoards = (region: keyof typeof jobBoardRegions) => {
+  const openRegionalJobBoards = (region: string) => {
     if (!query && !searchTerm) {
       toast.error("Please generate a boolean query first or enter a search term");
       return;
     }
 
-    const regionProviders = jobBoardRegions[region] as SearchProvider[];
+    const regionProviders = jobBoardRegions[region as keyof typeof jobBoardRegions] as SearchProvider[];
     
     // Filter by selected boards if available
     const filteredProviders = selectedBoards 
@@ -199,7 +199,12 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       <Tabs defaultValue="global" className="w-full">
         <TabsList className="grid grid-cols-5 mb-2">
           {(Object.keys(jobBoardRegions) as Array<string>).map((region) => (
-            <TabsTrigger key={region} value={region} className="text-xs">
+            <TabsTrigger 
+              key={region} 
+              value={region} 
+              className="text-xs"
+              onClick={() => openRegionalJobBoards(region)}
+            >
               {getRegionDisplayName(region)}
             </TabsTrigger>
           ))}
