@@ -81,7 +81,8 @@ export const searchJobs = async (
 export const addJobApiCredentials = async (
   service: string,
   apiKey: string,
-  apiSecret?: string
+  apiSecret?: string,
+  email?: string
 ) => {
   try {
     const { data, error } = await supabase
@@ -90,6 +91,7 @@ export const addJobApiCredentials = async (
         service,
         api_key: apiKey,
         api_secret: apiSecret || null,
+        email: email || null,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'service'
@@ -109,7 +111,7 @@ export const getJobApiCredentials = async (service: string) => {
   try {
     const { data, error } = await supabase
       .from('job_api_credentials')
-      .select('service, api_key')
+      .select('service, api_key, api_secret, email')
       .eq('service', service)
       .maybeSingle();
       

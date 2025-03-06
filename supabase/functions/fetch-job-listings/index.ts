@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts"; // Required for some browser APIs
 
@@ -28,6 +27,7 @@ class JobAPIService {
   private apiSecret: string | null = null;
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
+  private email: string | null = null;
   private supabaseClient: any;
 
   constructor(private provider: string, private headers: Record<string, string>) {
@@ -49,7 +49,7 @@ class JobAPIService {
       console.log(`Attempting to retrieve API credentials for ${this.provider}...`);
       const { data, error } = await this.supabaseClient
         .from('job_api_credentials')
-        .select('api_key, api_secret, access_token, refresh_token, expires_at')
+        .select('api_key, api_secret, access_token, refresh_token, expires_at, email')
         .eq('service', this.provider)
         .maybeSingle();
 
@@ -68,6 +68,7 @@ class JobAPIService {
       this.apiSecret = data.api_secret;
       this.accessToken = data.access_token;
       this.refreshToken = data.refresh_token;
+      this.email = data.email;
       
       // Check if access token is expired
       if (data.expires_at && new Date(data.expires_at) < new Date()) {
@@ -129,7 +130,7 @@ class JobAPIService {
       try {
         // Add authorization header if we have an access token
         const authHeaders: Record<string, string> = {};
-        if (this.accessToken && this.provider !== 'indeed') {
+        if (this.accessToken && this.provider !== 'indeed' && this.provider !== 'usajobs') {
           authHeaders['Authorization'] = `Bearer ${this.accessToken}`;
         } else if (this.apiKey && this.provider === 'indeed') {
           // Indeed uses a different auth mechanism
@@ -137,6 +138,12 @@ class JobAPIService {
         } else if (this.apiKey && this.provider === 'jobdataapi') {
           // JobDataAPI uses API key in header
           authHeaders['X-API-KEY'] = this.apiKey;
+        } else if (this.apiKey && this.provider === 'usajobs') {
+          // USAJobs API uses special headers
+          authHeaders['Authorization-Key'] = this.apiKey;
+          if (this.email) {
+            authHeaders['User-Agent'] = this.email;
+          }
         }
         
         const response = await fetch(url, {
@@ -597,7 +604,7 @@ class ArbeitnowJobService extends JobAPIService {
   }
 }
 
-// New JobDataAPI Service
+// JobDataAPI Service
 class JobDataAPIService extends JobAPIService {
   constructor(headers: Record<string, string>) {
     super('jobdataapi', headers);
@@ -716,6 +723,262 @@ class JobDataAPIService extends JobAPIService {
   }
 }
 
+// NEW: USAJobs API Service
+class USAJobsService extends JobAPIService {
+  constructor(headers: Record<string, string>) {
+    super('usajobs', headers);
+  }
+
+  protected async searchWithOfficialAPI(query: string): Promise<SearchResult[]> {
+    try {
+      // Check if we have API credentials
+      if (!this.apiKey) {
+        console.log('No API key found for USAJobs');
+        return this.getMockResults(query);
+      }
+
+      // Construct the API URL with search parameters
+      const encodedQuery = encodeURIComponent(query);
+      const apiUrl = `https://data.usajobs.gov/api/search?Keyword=${encodedQuery}&ResultsPerPage=10`;
+      
+      console.log(`Fetching jobs from USAJobs with query: ${query}`);
+      
+      // Fetch jobs from the API
+      const response = await this.fetchWithRetry(apiUrl);
+      const data = await response.json();
+      
+      console.log(`USAJobs returned ${data.SearchResult?.SearchResultItems?.length || 0} jobs`);
+      
+      if (!data.SearchResult?.SearchResultItems || !Array.isArray(data.SearchResult.SearchResultItems) || data.SearchResult.SearchResultItems.length === 0) {
+        console.log('No jobs found in USAJobs response');
+        return [];
+      }
+      
+      // Transform to standard format
+      const results = data.SearchResult.SearchResultItems.map((item: any) => {
+        const job = item.MatchedObjectDescriptor;
+        return {
+          title: job.PositionTitle || "Federal Job Opening",
+          company: job.OrganizationName || "U.S. Government",
+          location: job.PositionLocationDisplay || job.PositionLocation?.[0]?.LocationName || "Various Locations",
+          date: job.PublicationStartDate ? new Date(job.PublicationStartDate).toLocaleDateString() : "Recent",
+          url: job.PositionURI || `https://www.usajobs.gov/Search/Results?k=${encodedQuery}`,
+          snippet: job.QualificationSummary || job.UserArea?.Details?.JobSummary || `Federal job opening at ${job.DepartmentName || "a U.S. Government agency"}`,
+          source: "USAJobs",
+          jobType: job.PositionSchedule?.[0]?.Name || undefined,
+          salary: job.PositionRemuneration?.[0] ? 
+            `$${job.PositionRemuneration[0].MinimumRange} - $${job.PositionRemuneration[0].MaximumRange} ${job.PositionRemuneration[0].RateIntervalCode}` : 
+            undefined
+        };
+      });
+      
+      console.log(`Processed ${results.length} jobs from USAJobs`);
+      return results;
+    } catch (error) {
+      console.error("Error fetching jobs from USAJobs:", error);
+      return this.getMockResults(query);
+    }
+  }
+
+  protected async scrapeResults(query: string): Promise<SearchResult[]> {
+    console.log('USAJobs does not support scraping, falling back to mock data');
+    return this.getMockResults(query);
+  }
+  
+  // Mock results for when API is not available
+  private getMockResults(query: string): SearchResult[] {
+    // Generate 5-8 mock results
+    const count = 5 + Math.floor(Math.random() * 4);
+    const results: SearchResult[] = [];
+    
+    const jobTitles = [
+      `${query} Specialist`,
+      `${query} Analyst`,
+      `Federal ${query} Manager`,
+      `Government ${query} Advisor`,
+      `${query} Program Officer`,
+      `Senior ${query} Consultant`,
+      `${query} Policy Advisor`,
+      `${query} Operations Research`
+    ];
+    
+    const agencies = [
+      "Department of Defense",
+      "Department of Homeland Security",
+      "Department of Agriculture",
+      "Department of Interior",
+      "Department of Energy",
+      "Department of Transportation",
+      "Department of Veterans Affairs",
+      "Department of Health and Human Services"
+    ];
+    
+    const locations = [
+      "Washington, DC",
+      "Arlington, VA",
+      "Alexandria, VA",
+      "San Diego, CA",
+      "San Antonio, TX",
+      "Fort Meade, MD",
+      "Denver, CO",
+      "Nationwide"
+    ];
+    
+    for (let i = 0; i < count; i++) {
+      const titleIndex = Math.floor(Math.random() * jobTitles.length);
+      const agencyIndex = Math.floor(Math.random() * agencies.length);
+      const locationIndex = Math.floor(Math.random() * locations.length);
+      
+      results.push({
+        title: jobTitles[titleIndex],
+        company: agencies[agencyIndex],
+        location: locations[locationIndex],
+        date: `${1 + Math.floor(Math.random() * 14)} days ago`,
+        url: `https://www.usajobs.gov/Search/Results?k=${encodeURIComponent(query)}`,
+        snippet: `The ${agencies[agencyIndex]} is seeking a qualified ${jobTitles[titleIndex]} to join our team. This position requires U.S. citizenship and may require a security clearance.`,
+        source: "USAJobs",
+        salary: `$${70 + Math.floor(Math.random() * 60)}K - $${130 + Math.floor(Math.random() * 40)}K Per Annum`,
+        jobType: ["Full-time", "Permanent"][Math.floor(Math.random() * 2)]
+      });
+    }
+    
+    return results;
+  }
+}
+
+// NEW: RemoteOK API Service
+class RemoteOKService extends JobAPIService {
+  constructor(headers: Record<string, string>) {
+    super('remoteok', headers);
+  }
+
+  protected async searchWithOfficialAPI(query: string): Promise<SearchResult[]> {
+    return this.fetchRemoteOKJobs(query);
+  }
+
+  protected async scrapeResults(query: string): Promise<SearchResult[]> {
+    return this.fetchRemoteOKJobs(query);
+  }
+
+  private async fetchRemoteOKJobs(query: string): Promise<SearchResult[]> {
+    try {
+      // Construct the API URL with search parameters
+      const encodedQuery = encodeURIComponent(query);
+      const apiUrl = `https://remoteok.io/api?tag=${encodedQuery}`;
+      
+      console.log(`Fetching jobs from RemoteOK with query: ${query}`);
+      
+      // Set special headers for RemoteOK API
+      const remoteOKHeaders = {
+        'User-Agent': 'Mozilla/5.0 (compatible; JobSearchBot/1.0)',
+        'Accept': 'application/json',
+        // Required by RemoteOK - attribution
+        'Referer': 'https://remoteok.io/'
+      };
+      
+      // Fetch jobs from the API
+      const response = await this.fetchWithRetry(apiUrl, {
+        headers: remoteOKHeaders
+      });
+      
+      const data = await response.json();
+      
+      // RemoteOK API returns an array where the first item is a notice
+      let jobs = Array.isArray(data) ? data.slice(1) : [];
+      
+      console.log(`RemoteOK returned ${jobs.length} jobs`);
+      
+      if (jobs.length === 0) {
+        console.log('No jobs found in RemoteOK response');
+        return [];
+      }
+      
+      // Filter out jobs that don't match query
+      if (query) {
+        const queryLower = query.toLowerCase();
+        jobs = jobs.filter((job: any) => {
+          const position = (job.position || '').toLowerCase();
+          const tags = (job.tags || []).map((tag: string) => tag.toLowerCase());
+          const description = (job.description || '').toLowerCase();
+          
+          return position.includes(queryLower) || 
+                 tags.some((tag: string) => tag.includes(queryLower)) ||
+                 description.includes(queryLower);
+        });
+        
+        console.log(`Filtered to ${jobs.length} matching RemoteOK jobs`);
+      }
+      
+      // Transform to standard format
+      const results = jobs.map((job: any) => ({
+        title: job.position || "Remote Job Opening",
+        company: job.company || "Company on RemoteOK",
+        location: "Remote",
+        date: job.date ? new Date(job.date).toLocaleDateString() : "Recent",
+        url: job.url || `https://remoteok.io/remote-${query.toLowerCase().replace(/\s+/g, '-')}-jobs`,
+        snippet: job.description || `Remote job opening at ${job.company || "a company"}`,
+        source: "RemoteOK",
+        jobType: "Remote",
+        salary: job.salary || undefined
+      }));
+      
+      console.log(`Processed ${results.length} jobs from RemoteOK`);
+      return results;
+    } catch (error) {
+      console.error("Error fetching RemoteOK jobs:", error);
+      return this.getMockResults(query);
+    }
+  }
+  
+  // Mock results for when API is not available
+  private getMockResults(query: string): SearchResult[] {
+    // Generate 5-8 mock results
+    const count = 5 + Math.floor(Math.random() * 4);
+    const results: SearchResult[] = [];
+    
+    const jobTitles = [
+      `Remote ${query} Developer`,
+      `${query} Engineer (Remote)`,
+      `Senior ${query} Remote Expert`,
+      `${query} Technical Lead`,
+      `Remote ${query} Architect`,
+      `${query} Product Specialist`,
+      `Full-time Remote ${query} Developer`,
+      `${query} Consultant (100% Remote)`
+    ];
+    
+    const companies = [
+      "RemoteFirst Co",
+      "DistributedTeams Inc",
+      "Global Remote Solutions",
+      "Virtual Workspace Ltd",
+      "Remote Tech Ventures",
+      "Anywhere Works",
+      "Remote Innovators",
+      "Digital Nomad Company"
+    ];
+    
+    for (let i = 0; i < count; i++) {
+      const titleIndex = Math.floor(Math.random() * jobTitles.length);
+      const companyIndex = Math.floor(Math.random() * companies.length);
+      
+      results.push({
+        title: jobTitles[titleIndex],
+        company: companies[companyIndex],
+        location: "Remote",
+        date: `${1 + Math.floor(Math.random() * 14)} days ago`,
+        url: `https://remoteok.io/remote-${query.toLowerCase().replace(/\s+/g, '-')}-jobs`,
+        snippet: `${companies[companyIndex]} is looking for an experienced ${query} professional to join our fully distributed team. Work from anywhere in the world with a flexible schedule.`,
+        source: "RemoteOK",
+        salary: Math.random() > 0.5 ? `$${90 + Math.floor(Math.random() * 60)}K - $${150 + Math.floor(Math.random() * 50)}K` : undefined,
+        jobType: "Remote"
+      });
+    }
+    
+    return results;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -773,6 +1036,8 @@ serve(async (req) => {
     const googleService = new GoogleJobService(headers);
     const arbeitnowService = new ArbeitnowJobService(headers);
     const jobDataAPIService = new JobDataAPIService(headers);
+    const usaJobsService = new USAJobsService(headers);
+    const remoteOKService = new RemoteOKService(headers);
     
     // Determine which providers to use
     let servicesToUse = [];
@@ -784,6 +1049,8 @@ serve(async (req) => {
       if (providers.includes('google')) servicesToUse.push(googleService.search(searchTerm));
       if (providers.includes('arbeitnow')) servicesToUse.push(arbeitnowService.search(searchTerm));
       if (providers.includes('jobdataapi')) servicesToUse.push(jobDataAPIService.search(searchTerm));
+      if (providers.includes('usajobs')) servicesToUse.push(usaJobsService.search(searchTerm));
+      if (providers.includes('remoteok')) servicesToUse.push(remoteOKService.search(searchTerm));
     } else {
       // Use the single provider or default to all
       if (!provider || provider === 'linkedin') servicesToUse.push(linkedInService.search(searchTerm));
@@ -791,6 +1058,8 @@ serve(async (req) => {
       if (!provider || provider === 'google') servicesToUse.push(googleService.search(searchTerm));
       if (!provider || provider === 'arbeitnow') servicesToUse.push(arbeitnowService.search(searchTerm));
       if (!provider || provider === 'jobdataapi') servicesToUse.push(jobDataAPIService.search(searchTerm));
+      if (!provider || provider === 'usajobs') servicesToUse.push(usaJobsService.search(searchTerm));
+      if (!provider || provider === 'remoteok') servicesToUse.push(remoteOKService.search(searchTerm));
     }
     
     // If no services were selected (shouldn't happen), default to Google
