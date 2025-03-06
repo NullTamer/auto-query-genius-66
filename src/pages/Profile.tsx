@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Clock, Search, UserCircle, Settings, LogOut, History, Copy, Check } from "lucide-react";
+import { Clock, Search, UserCircle, Settings, LogOut, History, Copy, Check, Bookmark, ExternalLink, Building, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import NavigationPane from "@/components/layout/NavigationPane";
@@ -14,11 +14,12 @@ import NavigationPane from "@/components/layout/NavigationPane";
 const Profile = () => {
   const [user, setUser] = useState<any>(null);
   const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [savedJobs, setSavedJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const navigate = useNavigate();
 
-  // Fetch user data and search history
+  // Fetch user data, search history, and saved jobs
   useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -32,16 +33,16 @@ const Profile = () => {
       
       // Fetch real search history if logged in
       try {
-        const { data, error } = await supabase
+        const { data: historyData, error: historyError } = await supabase
           .from('search_history')
           .select('*')
           .order('created_at', { ascending: false })
           .limit(10);
           
-        if (error) throw error;
+        if (historyError) throw historyError;
         
-        if (data && data.length > 0) {
-          setSearchHistory(data);
+        if (historyData && historyData.length > 0) {
+          setSearchHistory(historyData);
         } else {
           // Fallback to mock data if no history exists
           setSearchHistory([
@@ -52,9 +53,31 @@ const Profile = () => {
             { id: 5, query: "React Native developer", provider: "linkedin", results_count: 27, created_at: "2023-04-20" },
           ]);
         }
+
+        // Fetch saved jobs
+        const { data: jobsData, error: jobsError } = await supabase
+          .from('job_postings')
+          .select(`
+            id, 
+            title, 
+            description, 
+            posting_url, 
+            created_at,
+            job_sources (
+              source_name
+            )
+          `)
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (jobsError) throw jobsError;
+        
+        if (jobsData && jobsData.length > 0) {
+          setSavedJobs(jobsData);
+        }
       } catch (error) {
-        console.error("Error fetching search history:", error);
-        // Use mock data on error
+        console.error("Error fetching user data:", error);
+        // Use mock data on error for history
         setSearchHistory([
           { id: 1, query: "React developer", provider: "google", results_count: 42, created_at: "2023-05-15" },
           { id: 2, query: "JavaScript engineer", provider: "linkedin", results_count: 38, created_at: "2023-05-10" },
@@ -95,6 +118,24 @@ const Profile = () => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     toast.success("Query copied to clipboard");
+  };
+
+  const handleRemoveSavedJob = async (jobId: number) => {
+    try {
+      const { error } = await supabase
+        .from('job_postings')
+        .delete()
+        .eq('id', jobId);
+        
+      if (error) throw error;
+      
+      // Update the local state to remove the job
+      setSavedJobs(savedJobs.filter(job => job.id !== jobId));
+      toast.success("Job removed from saved list");
+    } catch (error) {
+      console.error("Error removing saved job:", error);
+      toast.error("Failed to remove saved job");
+    }
   };
 
   if (isLoading) {
@@ -160,12 +201,16 @@ const Profile = () => {
         </Card>
 
         <Tabs defaultValue="history" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 cyber-card">
+          <TabsList className="grid w-full grid-cols-3 cyber-card">
             <TabsTrigger value="history">
               <History className="mr-2 h-4 w-4" />
               Search History
             </TabsTrigger>
             <TabsTrigger value="saved">
+              <Bookmark className="mr-2 h-4 w-4" />
+              Saved Jobs
+            </TabsTrigger>
+            <TabsTrigger value="searches">
               <Search className="mr-2 h-4 w-4" />
               Saved Searches
             </TabsTrigger>
@@ -226,6 +271,77 @@ const Profile = () => {
           </TabsContent>
           
           <TabsContent value="saved" className="mt-4">
+            <Card className="cyber-card">
+              <ScrollArea className="h-[400px]">
+                <div className="p-4 space-y-4">
+                  {savedJobs.length > 0 ? (
+                    savedJobs.map((job) => (
+                      <div 
+                        key={job.id} 
+                        className="p-3 border border-primary/20 rounded-md hover:border-primary/50 bg-background/50 transition-all relative"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="text-primary font-medium">{job.title}</h3>
+                            {job.job_sources && (
+                              <div className="flex items-center text-sm mt-1">
+                                <Building size={14} className="mr-1" />
+                                <span className="text-muted-foreground">
+                                  Source: {job.job_sources.source_name}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-7 px-2 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleRemoveSavedJob(job.id)}
+                              title="Remove from saved jobs"
+                            >
+                              <div className="sr-only">Remove job</div>
+                              ✕
+                            </Button>
+                            {job.posting_url && (
+                              <a
+                                href={job.posting_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:text-primary p-1 rounded transition-colors"
+                                title="Open job posting"
+                              >
+                                <ExternalLink size={14} />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <p className="mt-1 text-sm line-clamp-2 text-muted-foreground">
+                          {job.description}
+                        </p>
+                        <div className="text-xs text-muted-foreground mt-2 flex justify-between">
+                          <div className="flex items-center">
+                            <Clock className="mr-1 h-3 w-3" />
+                            {new Date(job.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center p-6 text-muted-foreground">
+                      <p>No saved jobs yet.</p>
+                      <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/search")}>
+                        <Search className="mr-2 h-4 w-4" />
+                        Find Jobs to Save
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="searches" className="mt-4">
             <Card className="cyber-card p-6">
               <div className="text-center text-muted-foreground">
                 <p>You don't have any saved searches yet.</p>

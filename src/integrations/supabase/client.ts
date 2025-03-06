@@ -122,3 +122,78 @@ export const getJobApiCredentials = async (service: string) => {
     return null;
   }
 };
+
+// Function to save a job posting to user's profile
+export const saveJobPosting = async (jobData: {
+  title: string;
+  company: string;
+  url: string;
+  snippet: string;
+  location?: string;
+  source: string;
+  salary?: string;
+  jobType?: string;
+  date?: string;
+}) => {
+  try {
+    // First check if user is authenticated
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      throw new Error('You must be logged in to save job postings');
+    }
+
+    const userId = session.user.id;
+    
+    // Create job source if it doesn't exist
+    const { data: sourceData, error: sourceError } = await supabase
+      .from('job_sources')
+      .select('id')
+      .eq('source_name', jobData.source)
+      .maybeSingle();
+      
+    if (sourceError) throw sourceError;
+    
+    let sourceId;
+    
+    if (!sourceData) {
+      // Create new source
+      const { data: newSource, error: newSourceError } = await supabase
+        .from('job_sources')
+        .insert({
+          source_name: jobData.source,
+          user_id: userId
+        })
+        .select('id')
+        .single();
+      
+      if (newSourceError) throw newSourceError;
+      sourceId = newSource.id;
+    } else {
+      sourceId = sourceData.id;
+    }
+    
+    // Save the job posting
+    const { data, error } = await supabase
+      .from('job_postings')
+      .insert({
+        title: jobData.title,
+        description: jobData.snippet,
+        content: jobData.snippet,
+        posting_url: jobData.url,
+        source_id: sourceId,
+        user_id: userId,
+        status: 'processed',
+        processed_at: new Date().toISOString()
+      })
+      .select('id')
+      .single();
+      
+    if (error) throw error;
+    
+    return { success: true, id: data.id };
+  } catch (error) {
+    console.error('Error saving job posting:', error);
+    throw error;
+  }
+};
