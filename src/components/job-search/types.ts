@@ -1,5 +1,5 @@
 
-export type SearchProvider = "linkedin" | "indeed" | "google";
+export type SearchProvider = "linkedin" | "indeed" | "google" | "arbeitnow";
 
 export interface SearchResult {
   title: string;

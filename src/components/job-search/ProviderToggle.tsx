@@ -30,6 +30,9 @@ const ProviderToggle: React.FC<ProviderToggleProps> = ({
       <ToggleGroupItem value="indeed" className="cyber-card">
         Indeed
       </ToggleGroupItem>
+      <ToggleGroupItem value="arbeitnow" className="cyber-card">
+        Arbeitnow
+      </ToggleGroupItem>
     </ToggleGroup>
   );
 };

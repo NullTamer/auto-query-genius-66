@@ -26,6 +26,8 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         return `https://www.indeed.com/jobs?q=${searchQuery}`;
       case "google":
         return `https://www.google.com/search?q=${searchQuery}+jobs`;
+      case "arbeitnow":
+        return `https://www.arbeitnow.com/jobs/${searchQuery}`;
       default:
         return `https://www.google.com/search?q=${searchQuery}+jobs`;
     }
@@ -48,7 +50,7 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
     }
     
     // Use an array for better handling of multiple windows
-    const providers: SearchProvider[] = ["google", "linkedin", "indeed"];
+    const providers: SearchProvider[] = ["google", "linkedin", "indeed", "arbeitnow"];
     
     try {
       // Open each provider in a new window with proper delays
