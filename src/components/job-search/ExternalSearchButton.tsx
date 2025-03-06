@@ -89,7 +89,7 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         setTimeout(() => {
           const url = getSearchUrl(provider);
           console.log(`Opening ${provider} search at: ${url}`);
-          window.open(url, "_blank");
+          window.open(url, `_blank_${provider}`);
         }, index * 300); // 300ms delay between each window open
       });
       
