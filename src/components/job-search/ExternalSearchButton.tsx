@@ -204,7 +204,7 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
           ))}
         </TabsList>
         
-        {(Object.entries(jobBoardRegions) as Array<[keyof typeof jobBoardRegions, string[]]>).map(([region, providers]) => (
+        {(Object.entries(jobBoardRegions) as Array<[keyof typeof jobBoardRegions, Array<string>]>).map(([region, providers]) => (
           <TabsContent key={region} value={region} className="mt-0">
             <div className="flex flex-wrap gap-2">
               {providers.map((provider) => (
