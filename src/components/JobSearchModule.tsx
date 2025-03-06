@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Settings } from "lucide-react";
 import { toast } from "sonner";
 import SearchForm from "./job-search/SearchForm";
 import ProviderToggle from "./job-search/ProviderToggle";
@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Keyword } from "@/hooks/useKeywords";
 import RecommendedSearchModule from "./recommended-search/RecommendedSearchModule";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Separator } from "@/components/ui/separator";
 
 interface JobSearchModuleProps {
   query: string;
@@ -231,14 +232,14 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
       )}
     
       <Card className="cyber-card p-4 md:p-6 animate-fade-in">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl md:text-2xl font-semibold text-primary neon-glow">
             <Search className="inline mr-2 h-5 w-5" />
             Job Search
           </h2>
         </div>
         
-        <div className="space-y-4">
+        <div className="space-y-6">
           {!isSearchPage && (
             <QueryTermSelector 
               query={query}
@@ -247,36 +248,47 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
             />
           )}
           
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex-grow">
-              <SearchForm
-                searchTerm={searchTerm}
-                isSearching={isSearching}
-                onSearchTermChange={setSearchTerm}
-                onSearch={() => handleSearch()}
-                navigateToSearch={!isSearchPage}
-                searchProvider={searchProvider}
-              />
-            </div>
-            <ExternalSearchButton
+          <div className="grid grid-cols-1 gap-4">
+            <SearchForm
               searchTerm={searchTerm}
-              query={query}
+              isSearching={isSearching}
+              onSearchTermChange={setSearchTerm}
+              onSearch={() => handleSearch()}
+              navigateToSearch={!isSearchPage}
               searchProvider={searchProvider}
-              selectedBoards={selectedBoards}
             />
+            
+            <ProviderToggle
+              searchProvider={searchProvider}
+              onProviderChange={handleProviderChange}
+            />
+            
+            <Separator className="my-4" />
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-md font-medium mb-3">Search Options</h3>
+                <JobBoardSelector
+                  selectedBoards={selectedBoards}
+                  onBoardSelectionChange={handleBoardSelectionChange}
+                  currentProvider={searchProvider}
+                  onProviderChange={handleProviderChange}
+                />
+              </div>
+              
+              <div>
+                <h3 className="text-md font-medium mb-3">External Search</h3>
+                <ExternalSearchButton
+                  searchTerm={searchTerm}
+                  query={query}
+                  searchProvider={searchProvider}
+                  selectedBoards={selectedBoards}
+                />
+              </div>
+            </div>
           </div>
           
-          <ProviderToggle
-            searchProvider={searchProvider}
-            onProviderChange={handleProviderChange}
-          />
-          
-          <JobBoardSelector
-            selectedBoards={selectedBoards}
-            onBoardSelectionChange={handleBoardSelectionChange}
-            currentProvider={searchProvider}
-            onProviderChange={handleProviderChange}
-          />
+          <Separator className="my-4" />
           
           <JobResultsList
             results={results}

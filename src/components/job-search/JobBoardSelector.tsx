@@ -3,6 +3,7 @@ import React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { JobBoardSelection, SearchProvider } from "./types";
+import { Card } from "@/components/ui/card";
 
 interface JobBoardSelectorProps {
   selectedBoards: JobBoardSelection;
@@ -32,91 +33,41 @@ const JobBoardSelector: React.FC<JobBoardSelectorProps> = ({
     }
   };
 
+  // Group job boards by category
+  const boardGroups = {
+    "Global": ["google", "linkedin"],
+    "Regional": ["indeed", "usajobs", "glassdoor", "arbeitnow"],
+    "Specialty": ["remoteok", "jobdataapi"]
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="text-sm font-medium mb-2">Search on multiple job boards:</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="linkedin" 
-            checked={selectedBoards.linkedin}
-            onCheckedChange={() => toggleBoard("linkedin")}
-            className="cyber-card"
-          />
-          <Label htmlFor="linkedin" className="cursor-pointer">LinkedIn</Label>
+    <Card className="cyber-card p-4 bg-secondary/40">
+      <div className="text-sm font-medium mb-3">Select job boards to include in search:</div>
+      
+      {Object.entries(boardGroups).map(([groupName, boards]) => (
+        <div key={groupName} className="mb-4">
+          <h4 className="text-xs uppercase text-muted-foreground mb-2">{groupName}</h4>
+          <div className="grid grid-cols-2 gap-3">
+            {boards.map(board => (
+              <div key={board} className="flex items-center space-x-2">
+                <Checkbox 
+                  id={`board-${board}`} 
+                  checked={selectedBoards[board as keyof JobBoardSelection]}
+                  onCheckedChange={() => toggleBoard(board as keyof JobBoardSelection)}
+                  className="cyber-card data-[state=checked]:bg-primary"
+                />
+                <Label 
+                  htmlFor={`board-${board}`} 
+                  className={`cursor-pointer ${currentProvider === board ? "text-primary font-medium" : ""}`}
+                >
+                  {board.charAt(0).toUpperCase() + board.slice(1)}
+                </Label>
+              </div>
+            ))}
+          </div>
         </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="indeed" 
-            checked={selectedBoards.indeed}
-            onCheckedChange={() => toggleBoard("indeed")}
-            className="cyber-card"
-          />
-          <Label htmlFor="indeed" className="cursor-pointer">Indeed</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="google" 
-            checked={selectedBoards.google}
-            onCheckedChange={() => toggleBoard("google")}
-            className="cyber-card"
-          />
-          <Label htmlFor="google" className="cursor-pointer">Google</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="arbeitnow" 
-            checked={selectedBoards.arbeitnow}
-            onCheckedChange={() => toggleBoard("arbeitnow")}
-            className="cyber-card"
-          />
-          <Label htmlFor="arbeitnow" className="cursor-pointer">Arbeitnow</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="jobdataapi" 
-            checked={selectedBoards.jobdataapi}
-            onCheckedChange={() => toggleBoard("jobdataapi")}
-            className="cyber-card"
-          />
-          <Label htmlFor="jobdataapi" className="cursor-pointer">JobDataAPI</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="usajobs" 
-            checked={selectedBoards.usajobs}
-            onCheckedChange={() => toggleBoard("usajobs")}
-            className="cyber-card"
-          />
-          <Label htmlFor="usajobs" className="cursor-pointer">USAJobs</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="remoteok" 
-            checked={selectedBoards.remoteok}
-            onCheckedChange={() => toggleBoard("remoteok")}
-            className="cyber-card"
-          />
-          <Label htmlFor="remoteok" className="cursor-pointer">RemoteOK</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="glassdoor" 
-            checked={selectedBoards.glassdoor}
-            onCheckedChange={() => toggleBoard("glassdoor")}
-            className="cyber-card"
-          />
-          <Label htmlFor="glassdoor" className="cursor-pointer">Glassdoor</Label>
-        </div>
-      </div>
-    </div>
+      ))}
+    </Card>
   );
 };
 

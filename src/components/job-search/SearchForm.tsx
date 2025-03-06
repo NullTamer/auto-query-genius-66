@@ -40,21 +40,24 @@ const SearchForm: React.FC<SearchFormProps> = ({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row gap-2 w-full">
-      <Input
-        value={searchTerm}
-        onChange={(e) => onSearchTermChange(e.target.value)}
-        placeholder="Enter search term or use generated query"
-        className="flex-grow bg-background/50 border-primary/20"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            handleSearch();
-          }
-        }}
-      />
+    <div className="flex w-full items-center space-x-2">
+      <div className="relative flex-grow">
+        <Input
+          value={searchTerm}
+          onChange={(e) => onSearchTermChange(e.target.value)}
+          placeholder="Enter search term or use generated query"
+          className="w-full py-5 pl-10 pr-4 bg-background/50 border-primary/20 text-base"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleSearch();
+            }
+          }}
+        />
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
+      </div>
       <Button
         onClick={handleSearch}
-        className="cyber-card hover:neon-glow transition-all whitespace-nowrap"
+        className="cyber-card hover:neon-glow transition-all h-10 px-4"
         disabled={isSearching}
       >
         {isSearching ? (
