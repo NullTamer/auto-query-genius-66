@@ -147,7 +147,7 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
   };
 
   // Get region names formatted for display
-  const getRegionDisplayName = (region: string): string => {
+  const getRegionDisplayName = (region: keyof typeof jobBoardRegions): string => {
     switch (region) {
       case "global": return "Worldwide";
       case "usa": return "United States";
@@ -198,14 +198,14 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       
       <Tabs defaultValue="global" className="w-full">
         <TabsList className="grid grid-cols-5 mb-2">
-          {Object.keys(jobBoardRegions).map((region) => (
+          {(Object.keys(jobBoardRegions) as Array<keyof typeof jobBoardRegions>).map((region) => (
             <TabsTrigger key={region} value={region} className="text-xs">
               {getRegionDisplayName(region)}
             </TabsTrigger>
           ))}
         </TabsList>
         
-        {Object.entries(jobBoardRegions).map(([region, providers]) => (
+        {(Object.entries(jobBoardRegions) as [keyof typeof jobBoardRegions, string[]][]).map(([region, providers]) => (
           <TabsContent key={region} value={region} className="mt-0">
             <div className="flex flex-wrap gap-2">
               {providers.map((provider) => (
