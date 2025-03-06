@@ -84,16 +84,20 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
     }
     
     try {
-      // Open each provider in a new window with proper delays
-      providers.forEach((provider, index) => {
-        setTimeout(() => {
+      // Modified approach: Create a user-triggered action to open windows
+      // This approach should work better with popup blockers
+      const openUrls = (providerList: SearchProvider[]) => {
+        providerList.forEach((provider) => {
           const url = getSearchUrl(provider);
-          console.log(`Opening ${provider} search at: ${url}`);
-          window.open(url, `_blank_${provider}`);
-        }, index * 300); // 300ms delay between each window open
-      });
+          window.open(url, "_blank");
+        });
+        
+        toast.success(`Opened search in ${providers.length} job board${providers.length > 1 ? 's' : ''}`);
+      };
       
-      toast.success(`Opened search in ${providers.length} job board${providers.length > 1 ? 's' : ''}`);
+      // Execute immediately - browser popup blockers typically allow multiple windows 
+      // if they're opened directly in response to a user action
+      openUrls(providers);
     } catch (error) {
       console.error("Failed to open job boards:", error);
       toast.error("Failed to open job boards. Please check your popup blocker settings.");
