@@ -105,6 +105,16 @@ const JobBoardSelector: React.FC<JobBoardSelectorProps> = ({
           />
           <Label htmlFor="remoteok" className="cursor-pointer">RemoteOK</Label>
         </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="glassdoor" 
+            checked={selectedBoards.glassdoor}
+            onCheckedChange={() => toggleBoard("glassdoor")}
+            className="cyber-card"
+          />
+          <Label htmlFor="glassdoor" className="cursor-pointer">Glassdoor</Label>
+        </div>
       </div>
     </div>
   );
