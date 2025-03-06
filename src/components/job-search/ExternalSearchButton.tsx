@@ -36,6 +36,8 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         return `https://www.usajobs.gov/Search/Results?k=${searchQuery}`;
       case "remoteok":
         return `https://remoteok.com/remote-${searchQuery.replace(/\s+/g, '-')}-jobs`;
+      case "glassdoor":
+        return `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${searchQuery}`;
       default:
         return `https://www.google.com/search?q=${searchQuery}+jobs`;
     }
@@ -69,9 +71,10 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       if (selectedBoards.jobdataapi) providers.push("jobdataapi");
       if (selectedBoards.usajobs) providers.push("usajobs");
       if (selectedBoards.remoteok) providers.push("remoteok");
+      if (selectedBoards.glassdoor) providers.push("glassdoor");
     } else {
       // Default to all providers if no selection
-      providers.push("google", "linkedin", "indeed", "arbeitnow", "jobdataapi", "usajobs", "remoteok");
+      providers.push("google", "linkedin", "indeed", "arbeitnow", "jobdataapi", "usajobs", "remoteok", "glassdoor");
     }
     
     // If no boards are selected, show error
