@@ -25,6 +25,9 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // Job API Service class for different providers
 class JobAPIService {
   private apiKey: string | null = null;
+  private apiSecret: string | null = null;
+  private accessToken: string | null = null;
+  private refreshToken: string | null = null;
   private supabaseClient: any;
 
   constructor(private provider: string, private headers: Record<string, string>) {
@@ -32,7 +35,6 @@ class JobAPIService {
   }
   
   // Retrieve API key for a service from the database
-  // Only used when we have official API access
   private async getAPICredentials(): Promise<boolean> {
     if (!this.supabaseClient) {
       // Import dynamically to avoid issues with Deno
@@ -44,21 +46,78 @@ class JobAPIService {
     }
 
     try {
+      console.log(`Attempting to retrieve API credentials for ${this.provider}...`);
       const { data, error } = await this.supabaseClient
         .from('job_api_credentials')
-        .select('api_key, api_secret, access_token')
+        .select('api_key, api_secret, access_token, refresh_token, expires_at')
         .eq('service', this.provider)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) {
+      if (error) {
+        console.error(`Error fetching API credentials for ${this.provider}:`, error);
+        return false;
+      }
+
+      if (!data) {
         console.log(`No API credentials found for ${this.provider}`);
         return false;
       }
 
+      console.log(`Found API credentials for ${this.provider}`);
       this.apiKey = data.api_key;
+      this.apiSecret = data.api_secret;
+      this.accessToken = data.access_token;
+      this.refreshToken = data.refresh_token;
+      
+      // Check if access token is expired
+      if (data.expires_at && new Date(data.expires_at) < new Date()) {
+        console.log(`Access token for ${this.provider} is expired, attempting to refresh...`);
+        const refreshed = await this.refreshAccessToken();
+        if (!refreshed) {
+          console.log(`Failed to refresh ${this.provider} access token, falling back to scraping`);
+          return false;
+        }
+      }
+      
       return true;
     } catch (error) {
       console.error(`Error getting API credentials for ${this.provider}:`, error);
+      return false;
+    }
+  }
+  
+  // Refresh an expired access token (to be implemented by provider-specific classes)
+  protected async refreshAccessToken(): Promise<boolean> {
+    // Default implementation does nothing
+    console.log(`No refresh token implementation for ${this.provider}`);
+    return false;
+  }
+  
+  // Store updated tokens in the database
+  protected async updateTokens(accessToken: string, refreshToken: string | null, expiresAt: Date | null): Promise<boolean> {
+    if (!this.supabaseClient) return false;
+    
+    try {
+      const { error } = await this.supabaseClient
+        .from('job_api_credentials')
+        .update({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_at: expiresAt?.toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('service', this.provider);
+        
+      if (error) {
+        console.error(`Error updating tokens for ${this.provider}:`, error);
+        return false;
+      }
+      
+      this.accessToken = accessToken;
+      this.refreshToken = refreshToken;
+      return true;
+    } catch (error) {
+      console.error(`Error updating tokens for ${this.provider}:`, error);
       return false;
     }
   }
@@ -68,19 +127,38 @@ class JobAPIService {
     let lastError;
     for (let i = 0; i < retries; i++) {
       try {
+        // Add authorization header if we have an access token
+        const authHeaders: Record<string, string> = {};
+        if (this.accessToken && this.provider !== 'indeed') {
+          authHeaders['Authorization'] = `Bearer ${this.accessToken}`;
+        } else if (this.apiKey && this.provider === 'indeed') {
+          // Indeed uses a different auth mechanism
+          authHeaders['Indeed-Client-Application-Id'] = this.apiKey;
+        }
+        
         const response = await fetch(url, {
           ...options,
           headers: {
             ...this.headers,
+            ...authHeaders,
             ...(options.headers || {}),
           },
         });
         
         if (response.ok) return response;
         
+        if (response.status === 401 && this.refreshToken) {
+          console.log(`Auth token expired for ${this.provider}, attempting to refresh...`);
+          const refreshed = await this.refreshAccessToken();
+          if (refreshed) {
+            // Try again with new token
+            continue;
+          }
+        }
+        
         if (response.status === 429) {
           console.log(`Rate limit hit for ${url}, waiting before retry...`);
-          await delay(Math.pow(2, i) * 1000); // Exponential backoff
+          await delay(Math.pow(2, i) * 1000 + Math.random() * 1000); // Exponential backoff with jitter
           continue;
         }
         
@@ -88,7 +166,7 @@ class JobAPIService {
       } catch (error) {
         console.error(`Fetch error (attempt ${i+1}/${retries}):`, error);
         lastError = error;
-        await delay(Math.pow(2, i) * 1000);
+        await delay(Math.pow(2, i) * 1000 + Math.random() * 1000);
       }
     }
     throw lastError;
@@ -114,11 +192,19 @@ class JobAPIService {
     // Try to get API credentials first
     const hasCredentials = await this.getAPICredentials();
     
-    if (hasCredentials && this.apiKey) {
+    if (hasCredentials && (this.apiKey || this.accessToken)) {
       // Use official API if credentials are available
-      return this.searchWithOfficialAPI(query);
+      try {
+        console.log(`Using official API for ${this.provider}`);
+        return await this.searchWithOfficialAPI(query);
+      } catch (error) {
+        console.error(`Error with official ${this.provider} API:`, error);
+        console.log(`Falling back to scraping for ${this.provider}`);
+        return this.scrapeResults(query);
+      }
     } else {
       // Fall back to web scraping if no credentials
+      console.log(`No valid credentials for ${this.provider}, using scraping`);
       return this.scrapeResults(query);
     }
   }
@@ -142,15 +228,105 @@ class LinkedInJobService extends JobAPIService {
     super('linkedin', headers);
   }
 
-  protected async searchWithOfficialAPI(query: string): Promise<SearchResult[]> {
-    if (!this.apiKey) return this.scrapeResults(query);
+  protected async refreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken || !this.apiSecret) return false;
     
     try {
-      // Official LinkedIn API implementation
-      // Note: LinkedIn API requires OAuth 2.0 which is complex to implement here
-      // For now, we'll implement a more robust scraping solution
-      console.log('LinkedIn API requires OAuth flow, falling back to scraping');
+      const tokenUrl = 'https://www.linkedin.com/oauth/v2/accessToken';
+      const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: this.refreshToken,
+        client_id: this.apiKey || '',
+        client_secret: this.apiSecret
+      });
+      
+      const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params.toString()
+      });
+      
+      if (!response.ok) {
+        console.error(`Failed to refresh LinkedIn token: ${response.status}`);
+        return false;
+      }
+      
+      const data = await response.json();
+      if (!data.access_token) {
+        console.error('No access token in LinkedIn response');
+        return false;
+      }
+      
+      // Calculate expiration (usually 60 days for LinkedIn)
+      const expiresInSeconds = data.expires_in || 5184000; // Default 60 days
+      const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+      
+      // Update tokens in database
+      return await this.updateTokens(
+        data.access_token,
+        data.refresh_token || this.refreshToken,
+        expiresAt
+      );
+    } catch (error) {
+      console.error('Error refreshing LinkedIn token:', error);
+      return false;
+    }
+  }
+
+  protected async searchWithOfficialAPI(query: string): Promise<SearchResult[]> {
+    if (!this.accessToken) {
+      console.log('No LinkedIn access token available');
       return this.scrapeResults(query);
+    }
+    
+    try {
+      // LinkedIn Jobs Search API v2
+      // Note: This requires a Partner Program or Marketing Developer Platform approval
+      const apiUrl = `https://api.linkedin.com/v2/jobSearch?keywords=${encodeURIComponent(query)}&start=0&count=10`;
+      
+      const response = await this.fetchWithRetry(apiUrl, {
+        headers: {
+          'X-Restli-Protocol-Version': '2.0.0'
+        }
+      });
+      
+      const data = await response.json();
+      
+      // Process LinkedIn API response
+      const jobs = data.elements || [];
+      console.log(`LinkedIn API returned ${jobs.length} jobs`);
+      
+      if (!jobs.length) {
+        return this.scrapeResults(query);
+      }
+      
+      const results: any[] = [];
+      
+      for (const job of jobs) {
+        // Fetch job details if needed
+        let jobDetails = job;
+        if (job.jobPosting && job.jobPosting['com.linkedin.voyager.jobs.JobPosting']) {
+          jobDetails = job.jobPosting['com.linkedin.voyager.jobs.JobPosting'];
+        }
+        
+        const companyDetails = jobDetails.companyDetails || {};
+        
+        results.push({
+          title: jobDetails.title || 'Job Opening',
+          company: companyDetails.companyName || 'Company on LinkedIn',
+          location: jobDetails.formattedLocation || 'Various Locations',
+          date: new Date(jobDetails.listedAt || Date.now()).toLocaleDateString(),
+          url: `https://www.linkedin.com/jobs/view/${jobDetails.entityUrn.split(':').pop()}`,
+          snippet: jobDetails.description || `Job opening at ${companyDetails.companyName || 'a company'}`,
+          source: 'LinkedIn',
+          salary: jobDetails.compensation ? `${jobDetails.compensation.minAmount}-${jobDetails.compensation.maxAmount} ${jobDetails.compensation.currency}` : undefined,
+          jobType: jobDetails.jobState
+        });
+      }
+      
+      return this.processResults(results);
     } catch (error) {
       console.error('LinkedIn API error:', error);
       return this.scrapeResults(query);
@@ -279,13 +455,38 @@ class IndeedJobService extends JobAPIService {
   }
 
   protected async searchWithOfficialAPI(query: string): Promise<SearchResult[]> {
-    if (!this.apiKey) return this.scrapeResults(query);
+    if (!this.apiKey) {
+      console.log('No Indeed API key available');
+      return this.scrapeResults(query);
+    }
     
     try {
-      // Official Indeed API implementation
-      // Note: Since 2022, Indeed has restricted access to their API
-      console.log('Indeed API requires partnership access, falling back to scraping');
-      return this.scrapeResults(query);
+      // Indeed Job Search API
+      const apiUrl = `https://apis.indeed.com/v2/jobsearch?q=${encodeURIComponent(query)}&limit=10`;
+      
+      const response = await this.fetchWithRetry(apiUrl);
+      const data = await response.json();
+      
+      const jobs = data.results || [];
+      console.log(`Indeed API returned ${jobs.length} jobs`);
+      
+      if (!jobs.length) {
+        return this.scrapeResults(query);
+      }
+      
+      const results = jobs.map((job: any) => ({
+        title: job.jobtitle || job.title || 'Job Opening',
+        company: job.company || 'Company on Indeed',
+        location: job.formattedLocation || job.location || 'Various Locations',
+        date: job.date || new Date(job.date_posted || Date.now()).toLocaleDateString(),
+        url: job.url || `https://www.indeed.com/viewjob?jk=${job.jobkey}`,
+        snippet: job.snippet || job.description || `Job opening at ${job.company || 'a company'}`,
+        source: 'Indeed',
+        salary: job.salary || undefined,
+        jobType: job.jobtype || undefined
+      }));
+      
+      return this.processResults(results);
     } catch (error) {
       console.error('Indeed API error:', error);
       return this.scrapeResults(query);

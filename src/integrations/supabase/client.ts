@@ -76,3 +76,47 @@ export const searchJobs = async (
     throw error;
   }
 };
+
+// Function to add job board API credentials
+export const addJobApiCredentials = async (
+  service: string,
+  apiKey: string,
+  apiSecret?: string
+) => {
+  try {
+    const { data, error } = await supabase
+      .from('job_api_credentials')
+      .upsert({
+        service,
+        api_key: apiKey,
+        api_secret: apiSecret || null,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'service'
+      })
+      .select();
+      
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error adding API credentials:', error);
+    throw error;
+  }
+};
+
+// Function to get job board API credentials
+export const getJobApiCredentials = async (service: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('job_api_credentials')
+      .select('service, api_key')
+      .eq('service', service)
+      .maybeSingle();
+      
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error fetching API credentials:', error);
+    return null;
+  }
+};
