@@ -36,7 +36,9 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
     indeed: false,
     google: true,
     arbeitnow: false,
-    jobdataapi: false
+    jobdataapi: false,
+    usajobs: false,
+    remoteok: false
   });
   const location = useLocation();
   const navigate = useNavigate();
@@ -134,7 +136,9 @@ const JobSearchModule: React.FC<JobSearchModuleProps> = ({
       indeed: provider === "indeed",
       google: provider === "google",
       arbeitnow: provider === "arbeitnow",
-      jobdataapi: provider === "jobdataapi"
+      jobdataapi: provider === "jobdataapi",
+      usajobs: provider === "usajobs",
+      remoteok: provider === "remoteok"
     }));
     
     // If we already have results and are on the search page, search again with new provider

@@ -35,7 +35,7 @@ const JobBoardSelector: React.FC<JobBoardSelectorProps> = ({
   return (
     <div className="space-y-4">
       <div className="text-sm font-medium mb-2">Search on multiple job boards:</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         <div className="flex items-center space-x-2">
           <Checkbox 
             id="linkedin" 
@@ -84,6 +84,26 @@ const JobBoardSelector: React.FC<JobBoardSelectorProps> = ({
             className="cyber-card"
           />
           <Label htmlFor="jobdataapi" className="cursor-pointer">JobDataAPI</Label>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="usajobs" 
+            checked={selectedBoards.usajobs}
+            onCheckedChange={() => toggleBoard("usajobs")}
+            className="cyber-card"
+          />
+          <Label htmlFor="usajobs" className="cursor-pointer">USAJobs</Label>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="remoteok" 
+            checked={selectedBoards.remoteok}
+            onCheckedChange={() => toggleBoard("remoteok")}
+            className="cyber-card"
+          />
+          <Label htmlFor="remoteok" className="cursor-pointer">RemoteOK</Label>
         </div>
       </div>
     </div>
