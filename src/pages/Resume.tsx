@@ -8,6 +8,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
+// Define types for our resume data
+interface UserResume {
+  id: number;
+  user_id: string;
+  filename: string;
+  content: string;
+  file_type: string;
+  created_at: string;
+}
+
 const Resume = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
