@@ -48,18 +48,52 @@ const JobDescriptionInput: React.FC<JobDescriptionInputProps> = ({
         };
         reader.readAsText(file);
       } else if (fileExtension === 'pdf') {
-        // For PDF files, we need to upload to the server for processing
-        if (onFileUpload) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
           try {
-            toast.info("Uploading PDF for processing...");
-            await onFileUpload(file);
+            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            const arrayBuffer = e.target?.result as ArrayBuffer;
+            console.log("PDF arrayBuffer size:", arrayBuffer.byteLength);
+            if (!arrayBuffer) {
+              console.error("PDF arrayBuffer is undefined");
+              toast.error("Failed to read PDF file");
+              return;
+            }
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            console.log("PDF loading task created");
+            const pdf = await loadingTask.promise;
+            console.log(`PDF loaded successfully with ${pdf.numPages} pages`);
+            let fullText = '';
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+              const page = await pdf.getPage(pageNum);
+              const textContent = await page.getTextContent();
+              fullText += textContent.items.map(item => 'str' in item ? item.str : '').join(' ') + ' ';
+            }
+            onChange(fullText.trim());
+            toast.success("PDF processed successfully");
           } catch (pdfError) {
-            console.error("PDF upload failed:", pdfError);
-            toast.error("PDF upload failed. Please try again.");
+            console.error("PDF.js processing error:", pdfError);
+            toast.warning("Using fallback method for PDF processing");
+            try {
+              const textReader = new FileReader();
+              textReader.onload = (textEvent) => {
+                const text = textEvent.target?.result as string;
+                if (text && text.trim() !== '') {
+                  onChange(text);
+                  toast.success("PDF text extracted using fallback method");
+                } else {
+                  toast.error("Could not extract text from PDF");
+                }
+              };
+              textReader.readAsText(file);
+            } catch (textError) {
+              console.error("Fallback text extraction failed:", textError);
+              toast.error("Could not process PDF file");
+            }
           }
-        } else {
-          toast.error("PDF upload is not enabled");
-        }
+        };
+        reader.readAsArrayBuffer(file);
       } else {
         toast.error("Unsupported file format. Please upload .txt, .doc, .docx, or .pdf files.");
       }

@@ -35,13 +35,19 @@ const JobInputSection = ({
   const handleFileSelect = async (file: File) => {
     if (!file) return;
 
+    // If it's a PDF file, we'll still use the server-side processing for consistency
+    // since the PDF content is extracted on the client but we want it processed the same way
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    
     try {
       setUploadedFileName(file.name);
-      await handlePdfUpload(file);
+      if (fileExtension === 'pdf') {
+        await handlePdfUpload(file);
+      }
     } catch (error) {
       console.error("Error handling file upload:", error);
       setUploadedFileName(null);
-      toast.error("Failed to process PDF file");
+      toast.error("Failed to process file");
     }
   };
 
