@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
@@ -19,7 +18,6 @@ const Profile = () => {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const navigate = useNavigate();
 
-  // Fetch user data, search history, and saved jobs
   useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -31,7 +29,6 @@ const Profile = () => {
       
       setUser(session.user);
       
-      // Fetch real search history if logged in
       try {
         const { data: historyData, error: historyError } = await supabase
           .from('search_history')
@@ -44,7 +41,6 @@ const Profile = () => {
         if (historyData && historyData.length > 0) {
           setSearchHistory(historyData);
         } else {
-          // Fallback to mock data if no history exists
           setSearchHistory([
             { id: 1, query: "React developer", provider: "google", results_count: 42, created_at: "2023-05-15" },
             { id: 2, query: "JavaScript engineer", provider: "linkedin", results_count: 38, created_at: "2023-05-10" },
@@ -54,7 +50,6 @@ const Profile = () => {
           ]);
         }
 
-        // Fetch saved jobs
         const { data: jobsData, error: jobsError } = await supabase
           .from('job_postings')
           .select(`
@@ -77,7 +72,6 @@ const Profile = () => {
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
-        // Use mock data on error for history
         setSearchHistory([
           { id: 1, query: "React developer", provider: "google", results_count: 42, created_at: "2023-05-15" },
           { id: 2, query: "JavaScript engineer", provider: "linkedin", results_count: 38, created_at: "2023-05-10" },
@@ -93,7 +87,6 @@ const Profile = () => {
     getUser();
   }, [navigate]);
 
-  // Reset copied state after timeout
   useEffect(() => {
     if (copiedId !== null) {
       const timer = setTimeout(() => {
@@ -129,7 +122,6 @@ const Profile = () => {
         
       if (error) throw error;
       
-      // Update the local state to remove the job
       setSavedJobs(savedJobs.filter(job => job.id !== jobId));
       toast.success("Job removed from saved list");
     } catch (error) {
