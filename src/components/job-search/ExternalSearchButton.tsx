@@ -1,7 +1,6 @@
-
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { JobBoardSelection, SearchProvider } from "./types";
 import { Tabs } from "@/components/ui/tabs";
@@ -23,6 +22,7 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
   selectedBoards,
 }) => {
   const finalSearchTerm = searchTerm || query;
+  const [showPopupWarning, setShowPopupWarning] = useState(false);
 
   const openExternalSearch = () => {
     if (!finalSearchTerm) {
@@ -31,7 +31,17 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
     }
     
     // Open in the currently selected provider
-    window.open(getSearchUrl(searchProvider, finalSearchTerm), "_blank");
+    try {
+      const newWindow = window.open(getSearchUrl(searchProvider, finalSearchTerm), "_blank");
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        setShowPopupWarning(true);
+        toast.error("Popup blocked! Please enable popups for this site to open search results.");
+      }
+    } catch (error) {
+      console.error("Failed to open search window:", error);
+      toast.error("Failed to open search window. Please check your popup blocker settings.");
+      setShowPopupWarning(true);
+    }
   };
 
   const openAllJobBoards = () => {
@@ -49,8 +59,8 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         if (isSelected) providers.push(provider as SearchProvider);
       });
     } else {
-      // Default to all providers if no selection
-      providers.push("google", "linkedin", "indeed", "arbeitnow", "jobdataapi", "usajobs", "remoteok", "glassdoor");
+      // Default to main providers if no selection
+      providers.push("google", "linkedin", "indeed");
     }
     
     // If no boards are selected, show error
@@ -59,18 +69,37 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       return;
     }
     
-    try {
-      // Create a user-triggered action to open windows
-      providers.forEach((provider) => {
-        const url = getSearchUrl(provider, finalSearchTerm);
-        window.open(url, "_blank");
-      });
+    // Open windows with staggered timing to avoid popup blockers
+    const openWindowWithDelay = (index: number) => {
+      if (index >= providers.length) return;
       
-      toast.success(`Opened search in ${providers.length} job board${providers.length > 1 ? 's' : ''}`);
-    } catch (error) {
-      console.error("Failed to open job boards:", error);
-      toast.error("Failed to open job boards. Please check your popup blocker settings.");
-    }
+      const provider = providers[index];
+      const url = getSearchUrl(provider, finalSearchTerm);
+      
+      try {
+        const newWindow = window.open(url, "_blank");
+        
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          setShowPopupWarning(true);
+          toast.error("Popup blocked! Please enable popups for this site to open search results.");
+          return; // Stop opening more if one is blocked
+        }
+        
+        // Schedule the next window to open after a delay
+        setTimeout(() => {
+          openWindowWithDelay(index + 1);
+        }, 300); // 300ms delay between each window
+        
+      } catch (error) {
+        console.error(`Failed to open ${provider} window:`, error);
+        setShowPopupWarning(true);
+        toast.error("Failed to open job board windows. Please check your popup blocker settings.");
+      }
+    };
+    
+    // Start the staggered window opening process
+    openWindowWithDelay(0);
+    toast.success(`Opening search in ${providers.length} job board${providers.length > 1 ? 's' : ''}`);
   };
 
   // Toggle all job boards in a region
@@ -111,17 +140,37 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
       return;
     }
     
-    try {
-      filteredProviders.forEach((provider) => {
-        const url = getSearchUrl(provider, finalSearchTerm);
-        window.open(url, "_blank");
-      });
+    // Open windows with staggered timing
+    const openWindowWithDelay = (index: number) => {
+      if (index >= filteredProviders.length) return;
       
-      toast.success(`Opened search in ${filteredProviders.length} ${getRegionDisplayName(region)} job board${filteredProviders.length > 1 ? 's' : ''}`);
-    } catch (error) {
-      console.error(`Failed to open ${region} job boards:`, error);
-      toast.error(`Failed to open ${region} job boards. Please check your popup blocker settings.`);
-    }
+      const provider = filteredProviders[index];
+      const url = getSearchUrl(provider, finalSearchTerm);
+      
+      try {
+        const newWindow = window.open(url, "_blank");
+        
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+          setShowPopupWarning(true);
+          toast.error("Popup blocked! Please enable popups for this site to open search results.");
+          return; // Stop opening more if one is blocked
+        }
+        
+        // Schedule the next window to open after a delay
+        setTimeout(() => {
+          openWindowWithDelay(index + 1);
+        }, 300); // 300ms delay between each window
+        
+      } catch (error) {
+        console.error(`Failed to open ${provider} window:`, error);
+        setShowPopupWarning(true);
+        toast.error(`Failed to open ${region} job boards. Please check your popup blocker settings.`);
+      }
+    };
+    
+    // Start the staggered window opening process
+    openWindowWithDelay(0);
+    toast.success(`Opening search in ${filteredProviders.length} ${getRegionDisplayName(region)} job board${filteredProviders.length > 1 ? 's' : ''}`);
   };
 
   return (
@@ -146,6 +195,13 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
           {selectedBoards ? "Open Selected" : "All Boards"}
         </Button>
       </div>
+      
+      {showPopupWarning && (
+        <div className="text-xs flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/50 rounded-md text-yellow-500">
+          <AlertCircle size={14} />
+          <span>Please enable popups in your browser to open multiple job boards at once.</span>
+        </div>
+      )}
       
       <Tabs defaultValue="global" className="w-full">
         <RegionTabs 

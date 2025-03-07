@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
-import { Search as SearchIcon, History, Copy, Check, ArrowLeft } from "lucide-react";
+import { Search as SearchIcon, History, Copy, Check, ArrowLeft, Home } from "lucide-react";
 import JobSearchModule from "@/components/JobSearchModule";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SearchProvider } from "@/components/job-search/types";
@@ -76,8 +76,8 @@ const Search = () => {
                 className="cyber-card hidden md:flex"
                 onClick={handleNewSearch}
               >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                New Search
+                <Home className="mr-2 h-4 w-4" />
+                Home
               </Button>
               <h2 className="text-xl md:text-2xl font-semibold text-primary neon-glow">
                 <SearchIcon className="inline mr-2 h-5 w-5" />
@@ -122,8 +122,8 @@ const Search = () => {
             className="cyber-card md:hidden mb-4 w-full"
             onClick={handleNewSearch}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            New Search
+            <Home className="mr-2 h-4 w-4" />
+            Home
           </Button>
           
           {searchQuery ? (
@@ -139,8 +139,8 @@ const Search = () => {
                 className="mt-4 cyber-card hover:neon-glow" 
                 onClick={handleNewSearch}
               >
-                <SearchIcon className="mr-2 h-4 w-4" />
-                New Search
+                <Home className="mr-2 h-4 w-4" />
+                Home
               </Button>
             </div>
           )}
