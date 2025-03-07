@@ -1,7 +1,7 @@
 
 import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import { useEffect } from "react";
-import Index from "./pages/Index";
+import IndexPage from "./pages/home/IndexPage";
 import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
 import Search from "./pages/Search";
@@ -38,7 +38,7 @@ function App() {
     <Router>
       <DarkModeInitializer />
       <Routes>
-        <Route path="/" element={<Index />} />
+        <Route path="/" element={<IndexPage />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/resumes" element={<ResumeManager />} />

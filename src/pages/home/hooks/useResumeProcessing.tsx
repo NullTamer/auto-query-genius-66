@@ -1,31 +1,25 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+
+import { useState, useCallback } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
 import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
-import { generateBooleanQuery } from "@/utils/queryUtils";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { useLocation } from "react-router-dom";
 
-// Components
-import AuthButton from "@/components/auth/AuthButton";
-import PageHeader from "@/components/layout/PageHeader";
-import JobInputSection from "@/components/job/JobInputSection";
-import KeywordDisplay from "@/components/KeywordDisplay";
-import QueryPreview from "@/components/QueryPreview";
-import StatisticsModule from "@/components/StatisticsModule";
-import JobSearchModule from "@/components/JobSearchModule";
-import NavigationPane from "@/components/layout/NavigationPane";
+interface UseResumeProcessingProps {
+  jobDescription: string;
+  setJobDescription: (value: string) => void;
+  setBooleanQuery: (value: string) => void;
+}
 
-const Index = () => {
-  const [jobDescription, setJobDescription] = useState("");
-  const [booleanQuery, setBooleanQuery] = useState("");
+export const useResumeProcessing = ({ 
+  jobDescription, 
+  setJobDescription,
+  setBooleanQuery 
+}: UseResumeProcessingProps) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [session, setSession] = useState<any>(null);
   const [pdfUploaded, setPdfUploaded] = useState(false);
   const [currentPdfPath, setCurrentPdfPath] = useState<string | null>(null);
-  const resumeContentProcessed = useRef(false);
-  const location = useLocation();
 
   const {
     isProcessing,
@@ -36,7 +30,6 @@ const Index = () => {
     setLastScrapeTime,
     currentJobId,
     setCurrentJobId,
-    processJob
   } = useJobProcessing();
 
   const {
@@ -47,37 +40,6 @@ const Index = () => {
     resetKeywords,
     setKeywordsFromEdgeFunction
   } = useKeywords();
-
-  useEffect(() => {
-    const processResumeContent = async () => {
-      const state = location.state as { resumeContent?: string } | null;
-      
-      if (state?.resumeContent && !resumeContentProcessed.current) {
-        setJobDescription(state.resumeContent);
-        resumeContentProcessed.current = true;
-        
-        toast.info("Processing resume content...");
-      }
-    };
-    
-    processResumeContent();
-  }, [location]);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      console.log('Auth session initialized:', session ? 'logged in' : 'not logged in');
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('Auth state changed:', _event);
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const handleProcessed = useCallback(async (jobId: number, processedAt: string) => {
     try {
@@ -104,6 +66,7 @@ const Index = () => {
     }
   }, [setHasError, setIsProcessing, resetKeywords]);
 
+  // Set up realtime updates
   useRealtimeUpdates({
     currentJobId,
     onProcessed: handleProcessed,
@@ -166,7 +129,7 @@ const Index = () => {
       setIsProcessing(false);
       setPdfUploaded(false);
     }
-  }, [debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime, setBooleanQuery]);
 
   const handleGenerateQuery = useCallback(async () => {
     console.log('Generate query button clicked');
@@ -219,7 +182,7 @@ const Index = () => {
       setHasError(true);
       toast.error('Failed to process job description');
     }
-  }, [jobDescription, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime]);
+  }, [jobDescription, debouncedFetchKeywords, resetKeywords, setIsProcessing, setHasError, setKeywordsFromEdgeFunction, setCurrentJobId, setLastScrapeTime, setBooleanQuery]);
 
   const handleRefresh = useCallback(async () => {
     if (!currentJobId || isRefreshing) return;
@@ -239,46 +202,20 @@ const Index = () => {
     }
   }, [currentJobId, isRefreshing, debouncedFetchKeywords, setHasError]);
 
-  useEffect(() => {
-    console.log('Keywords updated, generating boolean query:', keywords);
-    setBooleanQuery(generateBooleanQuery(keywords));
-  }, [keywords]);
-
-  return (
-    <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
-      <NavigationPane />
-      <div className="max-w-5xl mx-auto space-y-6 md:space-y-8 ml-16">
-        <AuthButton session={session} />
-        <PageHeader updateCount={updateCount} lastScrapeTime={lastScrapeTime} />
-
-        <div className="grid gap-6 md:gap-8 md:grid-cols-2">
-          <JobInputSection 
-            jobDescription={jobDescription}
-            setJobDescription={setJobDescription}
-            isProcessing={isProcessing}
-            hasError={hasError}
-            currentJobId={currentJobId}
-            handleGenerateQuery={handleGenerateQuery}
-            handlePdfUpload={handlePdfUpload}
-            handleRefresh={handleRefresh}
-            isRefreshing={isRefreshing}
-            pdfUploaded={pdfUploaded}
-          />
-          <div className="space-y-6">
-            <KeywordDisplay
-              keywords={keywords}
-              onRemoveKeyword={handleRemoveKeyword}
-            />
-            <StatisticsModule keywords={keywords} />
-          </div>
-        </div>
-
-        <QueryPreview query={booleanQuery} />
-        
-        {booleanQuery && <JobSearchModule query={booleanQuery} keywords={keywords} />}
-      </div>
-    </div>
-  );
+  return {
+    isProcessing,
+    isRefreshing,
+    hasError,
+    lastScrapeTime,
+    pdfUploaded,
+    currentJobId,
+    currentPdfPath,
+    keywords,
+    updateCount,
+    handleGenerateQuery,
+    handlePdfUpload,
+    handleRefresh,
+    handleRemoveKeyword,
+    resetKeywords
+  };
 };
-
-export default Index;
