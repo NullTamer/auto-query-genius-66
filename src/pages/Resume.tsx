@@ -149,7 +149,7 @@ const Resume = () => {
   
   const handleUseForQuery = () => {
     if (resumeContent) {
-      // Navigate to the main page and set the job description to the resume content
+      // Navigate to the main page with the resume content
       navigate('/', { state: { resumeContent } });
     } else {
       toast.error('No resume content available');
@@ -231,7 +231,12 @@ const Resume = () => {
                 <p className="text-sm text-muted-foreground mb-4">
                   Create a new resume based on your skills and experience.
                 </p>
-                <Button className="cyber-card">Create New</Button>
+                <Button 
+                  className="cyber-card" 
+                  onClick={() => navigate('/profile/resumes')}
+                >
+                  Manage Resumes
+                </Button>
               </div>
             </Card>
           </div>

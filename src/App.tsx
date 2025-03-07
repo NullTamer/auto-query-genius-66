@@ -6,6 +6,7 @@ import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
 import Search from "./pages/Search";
 import Resume from "./pages/Resume";
+import ResumeManager from "./pages/ResumeManager";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
@@ -40,6 +41,7 @@ function App() {
         <Route path="/" element={<Index />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/profile/resumes" element={<ResumeManager />} />
         <Route path="/search" element={<Search />} />
         <Route path="/resume" element={<Resume />} />
         <Route path="/settings" element={<Settings />} />

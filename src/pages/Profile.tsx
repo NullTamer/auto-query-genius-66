@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Clock, Search, UserCircle, Settings, LogOut, History, Copy, Check, Bookmark, ExternalLink, Building, MapPin } from "lucide-react";
+import { Clock, Search, UserCircle, Settings, LogOut, History, Copy, Check, Bookmark, ExternalLink, Building, MapPin, FileBadge } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import NavigationPane from "@/components/layout/NavigationPane";
@@ -194,6 +194,15 @@ const Profile = () => {
                 >
                   <Search className="mr-2 h-4 w-4" />
                   New Search
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="cyber-card"
+                  onClick={() => navigate("/profile/resumes")}
+                >
+                  <FileBadge className="mr-2 h-4 w-4" />
+                  My Resumes
                 </Button>
               </div>
             </div>
