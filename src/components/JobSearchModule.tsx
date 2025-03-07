@@ -41,7 +41,8 @@ const JobSearchModuleContent: React.FC<{ query: string; keywords: Keyword[] }> =
     results,
     handleTermToggle,
     handleSelectCombination,
-    handleSearch
+    handleSearch,
+    clearSearchTerm
   } = useSearch({
     initialQuery: query,
     searchProvider,

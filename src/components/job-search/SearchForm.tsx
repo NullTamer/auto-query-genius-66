@@ -2,7 +2,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { SearchProvider } from "./types";
 import { toast } from "sonner";
@@ -39,6 +39,10 @@ const SearchForm: React.FC<SearchFormProps> = ({
     }
   };
 
+  const handleClear = () => {
+    onSearchTermChange("");
+  };
+
   return (
     <div className="flex w-full items-center space-x-2">
       <div className="relative flex-grow">
@@ -46,7 +50,7 @@ const SearchForm: React.FC<SearchFormProps> = ({
           value={searchTerm}
           onChange={(e) => onSearchTermChange(e.target.value)}
           placeholder="Enter search term or use generated query"
-          className="w-full py-5 pl-10 pr-4 bg-background/50 border-primary/20 text-base"
+          className="w-full py-5 pl-10 pr-12 bg-background/50 border-primary/20 text-base"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               handleSearch();
@@ -54,6 +58,15 @@ const SearchForm: React.FC<SearchFormProps> = ({
           }}
         />
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
+        {searchTerm && (
+          <button
+            onClick={handleClear}
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-destructive"
+            aria-label="Clear search"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
       <Button
         onClick={handleSearch}

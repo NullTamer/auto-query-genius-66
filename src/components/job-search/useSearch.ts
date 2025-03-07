@@ -11,8 +11,18 @@ interface UseSearchProps {
   selectedBoards: JobBoardSelection;
 }
 
+// Helper function to clean the query
+const cleanQuery = (query: string): string => {
+  return query
+    .replace(/\(\s*|\s*\)/g, ' ') // Remove parentheses
+    .replace(/\s+AND\s+/gi, ' ') // Replace AND with space
+    .replace(/\s+OR\s+/gi, ' ') // Replace OR with space
+    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+    .trim();
+};
+
 export const useSearch = ({ initialQuery, searchProvider, selectedBoards }: UseSearchProps) => {
-  const [searchTerm, setSearchTerm] = useState(initialQuery || "");
+  const [searchTerm, setSearchTerm] = useState(initialQuery ? cleanQuery(initialQuery) : "");
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -20,9 +30,10 @@ export const useSearch = ({ initialQuery, searchProvider, selectedBoards }: UseS
   const navigate = useNavigate();
   const isSearchPage = location.pathname === "/search";
 
+  // Update searchTerm when initialQuery changes, but clean it
   useEffect(() => {
     if (initialQuery) {
-      setSearchTerm(initialQuery);
+      setSearchTerm(cleanQuery(initialQuery));
     }
   }, [initialQuery]);
 
@@ -80,6 +91,11 @@ export const useSearch = ({ initialQuery, searchProvider, selectedBoards }: UseS
   const handleSelectCombination = (terms: string[]) => {
     setSelectedTerms(terms);
     toast.success(`Applied search combination with ${terms.length} terms`);
+  };
+
+  const clearSearchTerm = () => {
+    setSearchTerm("");
+    setSelectedTerms([]);
   };
 
   const handleSearch = async (termOverride?: string, providerOverride?: SearchProvider) => {
@@ -159,6 +175,7 @@ export const useSearch = ({ initialQuery, searchProvider, selectedBoards }: UseS
     results,
     handleTermToggle,
     handleSelectCombination,
-    handleSearch
+    handleSearch,
+    clearSearchTerm
   };
 };
