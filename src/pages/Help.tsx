@@ -4,15 +4,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 import { 
   Search, FileBadge, User, Settings, 
-  BookOpen, MessageCircleQuestion, HelpCircle, Lightbulb 
+  BookOpen, MessageCircleQuestion, HelpCircle, Lightbulb, Home
 } from "lucide-react";
 
 const Help: React.FC = () => {
   return (
-    <div className="container py-6 animate-fade-in">
-      <h1 className="text-3xl font-bold mb-6 text-primary">Help Center</h1>
+    <div className="container py-6 animate-fade-in ml-16 lg:ml-20">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-primary">Help Center</h1>
+        <Link to="/">
+          <Button variant="outline" className="gap-2">
+            <Home size={16} />
+            <span>Home</span>
+          </Button>
+        </Link>
+      </div>
       
       <Tabs defaultValue="search" className="w-full">
         <TabsList className="mb-6 bg-background/50 p-1 gap-2 flex-wrap">
@@ -320,10 +330,10 @@ const HelpCard: React.FC<HelpCardProps> = ({ title, steps }) => {
   return (
     <Card className="p-4 cyber-card">
       <h3 className="text-lg font-medium mb-3 text-primary">{title}</h3>
-      <ol className="list-decimal pl-5 space-y-3">
+      <ol className="list-decimal pl-5 space-y-2">
         {steps.map((step, index) => (
-          <li key={index} className="text-sm pl-2">
-            <span className="text-foreground">{step}</span>
+          <li key={index} className="text-sm pl-1 mb-2">
+            <span className="text-foreground block py-1">{step}</span>
           </li>
         ))}
       </ol>
