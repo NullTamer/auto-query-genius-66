@@ -320,9 +320,11 @@ const HelpCard: React.FC<HelpCardProps> = ({ title, steps }) => {
   return (
     <Card className="p-4 cyber-card">
       <h3 className="text-lg font-medium mb-3 text-primary">{title}</h3>
-      <ol className="list-decimal pl-5 space-y-2">
+      <ol className="list-decimal pl-5 space-y-3">
         {steps.map((step, index) => (
-          <li key={index} className="text-sm">{step}</li>
+          <li key={index} className="text-sm pl-2">
+            <span className="text-foreground">{step}</span>
+          </li>
         ))}
       </ol>
     </Card>
