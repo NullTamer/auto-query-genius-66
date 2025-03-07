@@ -77,7 +77,7 @@ const Search = () => {
                 onClick={handleNewSearch}
               >
                 <Home className="mr-2 h-4 w-4" />
-                Home
+                New Search
               </Button>
               <h2 className="text-xl md:text-2xl font-semibold text-primary neon-glow">
                 <SearchIcon className="inline mr-2 h-5 w-5" />
@@ -123,7 +123,7 @@ const Search = () => {
             onClick={handleNewSearch}
           >
             <Home className="mr-2 h-4 w-4" />
-            Home
+            New Search
           </Button>
           
           {searchQuery ? (
@@ -140,7 +140,7 @@ const Search = () => {
                 onClick={handleNewSearch}
               >
                 <Home className="mr-2 h-4 w-4" />
-                Home
+                New Search
               </Button>
             </div>
           )}

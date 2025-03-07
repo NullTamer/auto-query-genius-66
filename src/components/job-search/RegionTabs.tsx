@@ -13,6 +13,19 @@ const RegionTabs: React.FC<RegionTabsProps> = ({
   onRegionClick,
   onRegionDoubleClick
 }) => {
+  // Prevent default behavior for click to avoid search trigger
+  const handleRegionClick = (e: React.MouseEvent, region: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onRegionClick(region);
+  };
+  
+  const handleRegionDoubleClick = (e: React.MouseEvent, region: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onRegionDoubleClick(region);
+  };
+
   return (
     <TabsList className="grid grid-cols-5 mb-4">
       {Object.keys(jobBoardRegions).map((region) => (
@@ -20,9 +33,9 @@ const RegionTabs: React.FC<RegionTabsProps> = ({
           key={region} 
           value={region} 
           className="text-xs flex items-center justify-center"
-          onClick={() => onRegionClick(region)}
-          onDoubleClick={() => onRegionDoubleClick(region)}
-          title={`Click to search in ${getRegionDisplayName(region)} boards. Double click to toggle all boards in this region.`}
+          onClick={(e) => handleRegionClick(e, region)}
+          onDoubleClick={(e) => handleRegionDoubleClick(e, region)}
+          title={`Click to select ${getRegionDisplayName(region)} tab. Double click to toggle all boards in this region.`}
         >
           <SearchRegionIcon region={region} />
           {getRegionDisplayName(region)}

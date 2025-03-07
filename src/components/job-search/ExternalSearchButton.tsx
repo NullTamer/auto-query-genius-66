@@ -23,6 +23,7 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
 }) => {
   const finalSearchTerm = searchTerm || query;
   const [showPopupWarning, setShowPopupWarning] = useState(false);
+  const [activeRegion, setActiveRegion] = useState("global");
 
   const openExternalSearch = () => {
     if (!finalSearchTerm) {
@@ -100,6 +101,11 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
     // Start the staggered window opening process
     openWindowWithDelay(0);
     toast.success(`Opening search in ${providers.length} job board${providers.length > 1 ? 's' : ''}`);
+  };
+
+  // This function now only switches the active tab without performing a search
+  const handleRegionTabChange = (region: string) => {
+    setActiveRegion(region);
   };
 
   // Toggle all job boards in a region
@@ -203,9 +209,9 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
         </div>
       )}
       
-      <Tabs defaultValue="global" className="w-full">
+      <Tabs defaultValue="global" className="w-full" value={activeRegion} onValueChange={handleRegionTabChange}>
         <RegionTabs 
-          onRegionClick={openRegionalJobBoards}
+          onRegionClick={handleRegionTabChange}
           onRegionDoubleClick={toggleRegionBoards}
         />
         
