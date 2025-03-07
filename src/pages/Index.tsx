@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useJobProcessing } from "@/hooks/useJobProcessing";
 import { useKeywords } from "@/hooks/useKeywords";
 import { useRealtimeUpdates } from "@/hooks/useRealtimeUpdates";
 import { generateBooleanQuery } from "@/utils/queryUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useLocation } from "react-router-dom";
 
 // Components
 import AuthButton from "@/components/auth/AuthButton";
@@ -23,6 +24,8 @@ const Index = () => {
   const [session, setSession] = useState<any>(null);
   const [pdfUploaded, setPdfUploaded] = useState(false);
   const [currentPdfPath, setCurrentPdfPath] = useState<string | null>(null);
+  const resumeContentProcessed = useRef(false);
+  const location = useLocation();
 
   const {
     isProcessing,
@@ -44,6 +47,22 @@ const Index = () => {
     resetKeywords,
     setKeywordsFromEdgeFunction
   } = useKeywords();
+
+  useEffect(() => {
+    const processResumeContent = async () => {
+      const state = location.state as { resumeContent?: string } | null;
+      
+      if (state?.resumeContent && !resumeContentProcessed.current) {
+        setJobDescription(state.resumeContent);
+        resumeContentProcessed.current = true;
+        
+        toast.info("Processing resume content...");
+        handleGenerateQuery();
+      }
+    };
+    
+    processResumeContent();
+  }, [location]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -106,10 +125,8 @@ const Index = () => {
       
       console.log('Uploading PDF file to parse-pdf edge function');
       
-      // Make sure we're passing the correct Content-Type
       const { data, error } = await supabase.functions.invoke('parse-pdf', {
         body: formData,
-        // Don't set content-type here, the browser will set it with the proper boundary
         headers: {
           'Accept': 'application/json'
         }

@@ -1,16 +1,48 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
-import { FileBadge, Upload, FileText, CheckCircle } from "lucide-react";
+import { FileBadge, Upload, FileText, CheckCircle, Home, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const Resume = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [resumeContent, setResumeContent] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  // Check if there's a saved resume on page load
+  useEffect(() => {
+    const checkForSavedResume = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        try {
+          const { data, error } = await supabase
+            .from('user_resumes')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          if (data && !error) {
+            setUploadSuccess(true);
+            setFileName(data.filename);
+            setResumeContent(data.content);
+          }
+        } catch (error) {
+          console.error('Error checking for saved resume:', error);
+        }
+      }
+    };
+    
+    checkForSavedResume();
+  }, []);
 
   const handleUploadResume = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -26,36 +58,76 @@ const Resume = () => {
     setUploadSuccess(false);
     
     try {
-      // Create form data for the file upload
-      const formData = new FormData();
-      formData.append('pdf', file);
+      // Read the file content first using PDF.js
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          
+          if (!arrayBuffer) {
+            console.error("PDF arrayBuffer is undefined");
+            toast.error("Failed to read PDF file");
+            setUploading(false);
+            return;
+          }
+          
+          const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+          const pdf = await loadingTask.promise;
+          let fullText = '';
+          
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            fullText += textContent.items.map(item => 'str' in item ? item.str : '').join(' ') + ' ';
+          }
+          
+          // Store the text content
+          const extractedText = fullText.trim();
+          setResumeContent(extractedText);
+          
+          // Create form data for the file upload to save in the database
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (session) {
+            const { data, error } = await supabase
+              .from('user_resumes')
+              .insert({
+                user_id: session.user.id,
+                filename: file.name,
+                content: extractedText,
+                file_type: 'pdf'
+              })
+              .select()
+              .single();
+            
+            if (error) {
+              console.error('Error saving resume:', error);
+              toast.error('Failed to save resume');
+              setUploading(false);
+              return;
+            }
+          }
+          
+          // Set success state
+          setUploadSuccess(true);
+          setFileName(file.name);
+          toast.success(`Resume "${file.name}" uploaded and processed successfully`);
+          setUploading(false);
+        } catch (pdfError) {
+          console.error('PDF.js processing error:', pdfError);
+          toast.error('Failed to process PDF file');
+          setUploading(false);
+        }
+      };
       
-      // Call the parse-pdf edge function
-      const { data, error } = await supabase.functions.invoke('parse-pdf', {
-        body: formData,
-      });
-      
-      if (error) {
-        console.error('Error uploading PDF:', error);
-        toast.error('Failed to upload PDF. Please try again.');
-        return;
-      }
-      
-      if (!data.success) {
-        toast.error(data.error || 'Failed to process PDF');
-        return;
-      }
-      
-      // Set success state
-      setUploadSuccess(true);
-      setFileName(file.name);
-      toast.success(`Resume "${file.name}" uploaded successfully`);
-      
+      reader.readAsArrayBuffer(file);
     } catch (error) {
       console.error('Error in PDF upload:', error);
       toast.error('An unexpected error occurred');
-    } finally {
       setUploading(false);
+    } finally {
       // Reset the file input to allow uploading the same file again
       event.target.value = '';
     }
@@ -63,6 +135,15 @@ const Resume = () => {
 
   const handleUploadClick = () => {
     document.getElementById('resume-upload')?.click();
+  };
+  
+  const handleUseForQuery = () => {
+    if (resumeContent) {
+      // Navigate to the main page and set the job description to the resume content
+      navigate('/', { state: { resumeContent } });
+    } else {
+      toast.error('No resume content available');
+    }
   };
 
   return (
@@ -75,6 +156,15 @@ const Resume = () => {
               <FileBadge className="inline mr-2 h-5 w-5" />
               Resume Builder
             </h2>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="cyber-card flex items-center gap-2"
+              onClick={() => navigate('/')}
+            >
+              <Home size={16} />
+              Home
+            </Button>
           </div>
           
           <p className="mb-6 text-muted-foreground">
@@ -91,9 +181,17 @@ const Resume = () => {
                 )}
                 <h3 className="text-lg font-medium mb-2">Upload Resume</h3>
                 {fileName && uploadSuccess ? (
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Uploaded: {fileName}
-                  </p>
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground mb-1">
+                      Uploaded: {fileName}
+                    </p>
+                    <Button 
+                      className="cyber-card flex items-center gap-2 w-full"
+                      onClick={handleUseForQuery}
+                    >
+                      Use for Boolean Query <ArrowRight size={16} />
+                    </Button>
+                  </div>
                 ) : (
                   <p className="text-sm text-muted-foreground mb-4">
                     Upload your existing resume to analyze how it matches with job listings.
@@ -107,7 +205,7 @@ const Resume = () => {
                   onChange={handleUploadResume}
                 />
                 <Button 
-                  className="cyber-card"
+                  className="cyber-card mt-4"
                   onClick={handleUploadClick}
                   disabled={uploading}
                 >
