@@ -57,7 +57,6 @@ const Index = () => {
         resumeContentProcessed.current = true;
         
         toast.info("Processing resume content...");
-        handleGenerateQuery();
       }
     };
     

@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileText, Download, Trash2, Calendar } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
+import { toast } from "sonner";
 
 interface UserResume {
   id: number;
@@ -35,6 +36,23 @@ const ResumeCard: React.FC<ResumeCardProps> = ({ resume, onDelete, onSelect }) =
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleSelectResume = () => {
+    try {
+      // Ensure content is not empty
+      if (!resume.content || resume.content.trim() === '') {
+        toast.error("This resume has no content to use");
+        return;
+      }
+      
+      // Pass the resume to the parent component
+      onSelect(resume);
+      toast.success("Resume selected successfully");
+    } catch (error) {
+      console.error("Error selecting resume:", error);
+      toast.error("Failed to select resume");
+    }
   };
 
   return (
@@ -81,7 +99,7 @@ const ResumeCard: React.FC<ResumeCardProps> = ({ resume, onDelete, onSelect }) =
         variant="outline" 
         size="sm" 
         className="mt-3 w-full cyber-card"
-        onClick={() => onSelect(resume)}
+        onClick={handleSelectResume}
       >
         Use This Resume
       </Button>
