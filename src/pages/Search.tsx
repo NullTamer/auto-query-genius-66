@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
-import { Search as SearchIcon, History, Copy, Check } from "lucide-react";
+import { Search as SearchIcon, History, Copy, Check, ArrowLeft } from "lucide-react";
 import JobSearchModule from "@/components/JobSearchModule";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SearchProvider } from "@/components/job-search/types";
@@ -51,6 +51,10 @@ const Search = () => {
     navigate("/profile");
   };
 
+  const handleNewSearch = () => {
+    navigate("/");
+  };
+
   const copyToClipboard = () => {
     if (!searchQuery) return;
     
@@ -65,10 +69,21 @@ const Search = () => {
       <div className="max-w-5xl mx-auto space-y-6 md:space-y-8 ml-16">
         <Card className="cyber-card p-4 md:p-6 animate-fade-in">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl md:text-2xl font-semibold text-primary neon-glow">
-              <SearchIcon className="inline mr-2 h-5 w-5" />
-              Search
-            </h2>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="cyber-card hidden md:flex"
+                onClick={handleNewSearch}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                New Search
+              </Button>
+              <h2 className="text-xl md:text-2xl font-semibold text-primary neon-glow">
+                <SearchIcon className="inline mr-2 h-5 w-5" />
+                Search Results
+              </h2>
+            </div>
             <div className="flex gap-2">
               {searchQuery && (
                 <Button 
@@ -101,6 +116,16 @@ const Search = () => {
             Results include both real and AI-generated job listings.
           </p>
           
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="cyber-card md:hidden mb-4 w-full"
+            onClick={handleNewSearch}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            New Search
+          </Button>
+          
           {searchQuery ? (
             <JobSearchModule 
               query={searchQuery} 
@@ -108,9 +133,16 @@ const Search = () => {
               initialProvider={provider}
             />
           ) : (
-            <p className="text-center py-6 text-muted-foreground">
-              Start a search from the home page or use the navigation to run a new search.
-            </p>
+            <div className="text-center py-6 text-muted-foreground">
+              <p>No search query found. Start a new search from the home page.</p>
+              <Button 
+                className="mt-4 cyber-card hover:neon-glow" 
+                onClick={handleNewSearch}
+              >
+                <SearchIcon className="mr-2 h-4 w-4" />
+                New Search
+              </Button>
+            </div>
           )}
         </Card>
       </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
@@ -182,7 +183,7 @@ const Profile = () => {
                   variant="outline" 
                   size="sm" 
                   className="cyber-card"
-                  onClick={() => navigate("/search")}
+                  onClick={() => navigate("/")}
                 >
                   <Search className="mr-2 h-4 w-4" />
                   New Search
@@ -331,7 +332,7 @@ const Profile = () => {
                   ) : (
                     <div className="text-center p-6 text-muted-foreground">
                       <p>No saved jobs yet.</p>
-                      <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/search")}>
+                      <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/")}>
                         <Search className="mr-2 h-4 w-4" />
                         Find Jobs to Save
                       </Button>
@@ -346,7 +347,7 @@ const Profile = () => {
             <Card className="cyber-card p-6">
               <div className="text-center text-muted-foreground">
                 <p>You don't have any saved searches yet.</p>
-                <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/search")}>
+                <Button className="mt-4 cyber-card hover:neon-glow" onClick={() => navigate("/")}>
                   <Search className="mr-2 h-4 w-4" />
                   Start a New Search
                 </Button>
