@@ -13,14 +13,16 @@ import NotFound from "./pages/NotFound";
 import { Toaster } from "@/components/ui/toaster";
 import "./App.css";
 
-// Initialize dark mode based on saved preference
+// Initialize dark mode based on saved preference, defaulting to dark mode
 const initDarkMode = () => {
-  if (localStorage.theme === 'dark' || 
-      (!('theme' in localStorage) && 
-       window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark');
-  } else {
+  if (localStorage.theme === 'light') {
     document.documentElement.classList.remove('dark');
+  } else {
+    // Default to dark mode
+    document.documentElement.classList.add('dark');
+    if (!('theme' in localStorage)) {
+      localStorage.theme = 'dark';
+    }
   }
 };
 

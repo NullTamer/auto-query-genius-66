@@ -6,15 +6,17 @@ import type { Database } from './types';
 const SUPABASE_URL = "https://lkevpnotoqmyeiasbeqt.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZXZwbm90b3FteWVpYXNiZXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAxMTcwODAsImV4cCI6MjA1NTY5MzA4MH0.lq7GzdVJEA1LbVasQRDyz80CHjFuqXtrfpRWmaEGMu8";
 
-// Initialize dark mode based on saved preference
+// Initialize dark mode based on saved preference, defaulting to dark mode
 const initTheme = () => {
   if (typeof window !== 'undefined') {
-    if (localStorage.theme === 'dark' || 
-        (!('theme' in localStorage) && 
-         window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.documentElement.classList.add('dark');
-    } else {
+    if (localStorage.theme === 'light') {
       document.documentElement.classList.remove('dark');
+    } else {
+      // Default to dark mode
+      document.documentElement.classList.add('dark');
+      if (!('theme' in localStorage)) {
+        localStorage.theme = 'dark';
+      }
     }
   }
 };

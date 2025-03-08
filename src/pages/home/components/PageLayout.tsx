@@ -1,5 +1,5 @@
 
-import React from "react";
+import React, { useState } from "react";
 
 // Components
 import AuthButton from "@/components/auth/AuthButton";
@@ -10,7 +10,11 @@ import QueryPreview from "@/components/QueryPreview";
 import StatisticsModule from "@/components/StatisticsModule";
 import JobSearchModule from "@/components/JobSearchModule";
 import NavigationPane from "@/components/layout/NavigationPane";
+import UserGuide from "@/components/guide/UserGuide";
 import { Keyword } from "@/hooks/useKeywords";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface PageLayoutProps {
   session: any;
@@ -50,12 +54,33 @@ const PageLayout: React.FC<PageLayoutProps> = ({
   handleRefresh,
   handleRemoveKeyword,
 }) => {
+  const [guideOpen, setGuideOpen] = useState(true);
+  const hasNoContent = !jobDescription && keywords.length === 0;
+
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
       <NavigationPane />
       <div className="max-w-5xl mx-auto space-y-6 md:space-y-8 ml-16">
         <AuthButton session={session} />
         <PageHeader updateCount={updateCount} lastScrapeTime={lastScrapeTime} />
+
+        {hasNoContent && <UserGuide />}
+
+        {!hasNoContent && (
+          <Collapsible open={guideOpen} onOpenChange={setGuideOpen} className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg text-primary font-medium">Guide</h3>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  {guideOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent>
+              <UserGuide />
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         <div className="grid gap-6 md:gap-8 md:grid-cols-2">
           <JobInputSection 

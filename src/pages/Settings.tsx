@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { toggleDarkMode } from "@/integrations/supabase/client";
 
 const Settings = () => {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true); // Default to true
 
   useEffect(() => {
     const isDarkMode = document.documentElement.classList.contains("dark");
