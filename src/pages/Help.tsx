@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -88,7 +87,6 @@ const Help: React.FC = () => {
                   "View all saved jobs in your Profile section",
                   "You must be logged in to save jobs"
                 ]}
-                isWorkInProgress={true}
               />
             </HelpSection>
           </TabsContent>
@@ -107,7 +105,6 @@ const Help: React.FC = () => {
                   "The system will parse your resume automatically",
                   "Review extracted information for accuracy"
                 ]}
-                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -144,11 +141,10 @@ const Help: React.FC = () => {
                 title="Account Setup"
                 steps={[
                   "Navigate to the Profile page",
-                  "Complete all required fields in your profile",
+                  "Fill out your profile information",
                   "Add professional details like skills and experience",
                   "Upload a profile photo (optional)"
                 ]}
-                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -159,7 +155,6 @@ const Help: React.FC = () => {
                   "Remove jobs you're no longer interested in",
                   "Track application status for each saved job"
                 ]}
-                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -189,7 +184,6 @@ const Help: React.FC = () => {
                   "Changes are saved automatically",
                   "Theme preference is remembered for future visits"
                 ]}
-                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -297,7 +291,6 @@ const Help: React.FC = () => {
   );
 };
 
-// Helper Components
 interface HelpSectionProps {
   title: string;
   description: string;

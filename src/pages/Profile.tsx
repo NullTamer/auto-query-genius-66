@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Clock, Search, UserCircle, Settings, LogOut, History, Copy, Check, Bookmark, ExternalLink, Building, MapPin, FileBadge } from "lucide-react";
+import { Clock, Search, UserCircle, Settings, LogOut, History, Copy, Check, Bookmark, ExternalLink, Building, MapPin, FileBadge, User } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import NavigationPane from "@/components/layout/NavigationPane";
+import ProfileForm from "@/components/profile/ProfileForm";
 
 const Profile = () => {
   const [user, setUser] = useState<any>(null);
@@ -202,8 +203,12 @@ const Profile = () => {
           </div>
         </Card>
 
-        <Tabs defaultValue="history" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 cyber-card">
+        <Tabs defaultValue="profile" className="w-full">
+          <TabsList className="grid w-full grid-cols-4 cyber-card">
+            <TabsTrigger value="profile">
+              <User className="mr-2 h-4 w-4" />
+              My Profile
+            </TabsTrigger>
             <TabsTrigger value="history">
               <History className="mr-2 h-4 w-4" />
               Search History
@@ -217,6 +222,10 @@ const Profile = () => {
               Saved Searches
             </TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="profile" className="mt-4">
+            <ProfileForm />
+          </TabsContent>
           
           <TabsContent value="history" className="mt-4">
             <Card className="cyber-card">

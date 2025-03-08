@@ -7,6 +7,31 @@
  
 @layer base {
   :root {
+    /* Light mode variables */
+    --background: 180 15% 95%;
+    --foreground: 220 10% 10%;
+    --card: 180 15% 97%;
+    --card-foreground: 220 10% 12%;
+    --popover: 180 15% 97%;
+    --popover-foreground: 220 10% 12%;
+    --primary: 173 60% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 20% 96%;
+    --secondary-foreground: 220 10% 12%;
+    --muted: 200 20% 90%;
+    --muted-foreground: 220 5% 40%;
+    --accent: 173 60% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 13% 85%;
+    --input: 220 13% 85%;
+    --ring: 173 60% 40%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark mode variables - these are the original values */
     --background: 220 10% 10%;
     --foreground: 0 0% 98%;
     --card: 220 10% 12%;
@@ -26,7 +51,6 @@
     --border: 214.3 31.8% 20%;
     --input: 214.3 31.8% 20%;
     --ring: 158 82% 50%;
-    --radius: 0.5rem;
   }
 }
 
@@ -47,17 +71,34 @@
                  0 0 20px theme('colors.primary.DEFAULT');
   }
 
-  .matrix-bg {
+  /* Matrix background for dark mode */
+  .dark .matrix-bg {
     background: linear-gradient(180deg, 
       rgba(0, 20, 10, 0.95) 0%,
       rgba(0, 10, 5, 0.98) 100%
     );
   }
 
-  .cyber-card {
+  /* Light mode matrix background */
+  .matrix-bg {
+    background: linear-gradient(180deg, 
+      rgba(240, 250, 255, 0.95) 0%,
+      rgba(230, 245, 255, 0.98) 100%
+    );
+  }
+
+  /* Cyber card styles for dark mode */
+  .dark .cyber-card {
     @apply backdrop-blur-xl bg-secondary/80 border border-primary/20;
     box-shadow: 0 0 10px theme('colors.primary.DEFAULT/0.2'),
                 inset 0 0 20px theme('colors.primary.DEFAULT/0.1');
+  }
+
+  /* Light mode cyber card */
+  .cyber-card {
+    @apply backdrop-blur-xl bg-white/90 border border-primary/30;
+    box-shadow: 0 0 10px theme('colors.primary.DEFAULT/0.3'),
+                inset 0 0 20px theme('colors.primary.DEFAULT/0.05');
   }
 
   .glitch {
