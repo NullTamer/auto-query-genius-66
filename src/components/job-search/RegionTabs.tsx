@@ -8,14 +8,12 @@ interface RegionTabsProps {
   onRegionClick: (region: string) => void;
   onRegionDoubleClick: (region: string) => void;
   activeRegion: string;
-  onClearRegion?: () => void;
 }
 
 const RegionTabs: React.FC<RegionTabsProps> = ({
   onRegionClick,
   onRegionDoubleClick,
-  activeRegion,
-  onClearRegion
+  activeRegion
 }) => {
   // Prevent default behavior for click to avoid search trigger
   const handleRegionClick = (e: React.MouseEvent, region: string) => {
@@ -30,41 +28,22 @@ const RegionTabs: React.FC<RegionTabsProps> = ({
     onRegionDoubleClick(region);
   };
 
-  const handleClear = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onClearRegion) onClearRegion();
-  };
-
   return (
-    <div className="flex flex-col space-y-2">
-      <TabsList className="grid grid-cols-5 mb-2">
-        {Object.keys(jobBoardRegions).map((region) => (
-          <TabsTrigger 
-            key={region} 
-            value={region} 
-            className="text-xs flex items-center justify-center"
-            onClick={(e) => handleRegionClick(e, region)}
-            onDoubleClick={(e) => handleRegionDoubleClick(e, region)}
-            title={`Click to select ${getRegionDisplayName(region)} tab. Double click to toggle all boards in this region.`}
-          >
-            <SearchRegionIcon region={region} />
-            {getRegionDisplayName(region)}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      
-      {activeRegion && onClearRegion && (
-        <div className="flex justify-end">
-          <button 
-            onClick={handleClear}
-            className="text-xs text-muted-foreground hover:text-primary transition-colors"
-          >
-            Clear selection
-          </button>
-        </div>
-      )}
-    </div>
+    <TabsList className="grid grid-cols-5 mb-2">
+      {Object.keys(jobBoardRegions).map((region) => (
+        <TabsTrigger 
+          key={region} 
+          value={region} 
+          className="text-xs flex items-center justify-center"
+          onClick={(e) => handleRegionClick(e, region)}
+          onDoubleClick={(e) => handleRegionDoubleClick(e, region)}
+          title={`Click to select ${getRegionDisplayName(region)} tab. Double click to toggle all boards in this region.`}
+        >
+          <SearchRegionIcon region={region} />
+          {getRegionDisplayName(region)}
+        </TabsTrigger>
+      ))}
+    </TabsList>
   );
 };
 

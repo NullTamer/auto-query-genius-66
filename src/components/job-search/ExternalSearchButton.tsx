@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, AlertCircle } from "lucide-react";
@@ -180,20 +179,6 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
     toast.success(`Opening search in ${filteredProviders.length} ${getRegionDisplayName(region)} job board${filteredProviders.length > 1 ? 's' : ''}`);
   };
 
-  // Clear all selected boards in the current region
-  const clearRegionSelections = () => {
-    if (!selectedBoards) return;
-    
-    const regionProviders = jobBoardRegions[activeRegion as keyof typeof jobBoardRegions] || [];
-    const updatedBoards = {...selectedBoards};
-    
-    regionProviders.forEach(provider => {
-      updatedBoards[provider as keyof JobBoardSelection] = false;
-    });
-    
-    toast.success(`Cleared all selections in ${getRegionDisplayName(activeRegion)}`);
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -229,7 +214,6 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
           onRegionClick={handleRegionTabChange}
           onRegionDoubleClick={toggleRegionBoards}
           activeRegion={activeRegion}
-          onClearRegion={clearRegionSelections}
         />
         
         {Object.entries(jobBoardRegions).map(([region, providers]) => (
@@ -243,6 +227,11 @@ const ExternalSearchButton: React.FC<ExternalSearchButtonProps> = ({
           />
         ))}
       </Tabs>
+      
+      <div className="text-xs text-muted-foreground mt-2 px-2">
+        <p><strong>Note:</strong> "External Search" uses the search provider selected above, while "Open Selected" 
+        uses the job boards checked in Search Options.</p>
+      </div>
     </div>
   );
 };

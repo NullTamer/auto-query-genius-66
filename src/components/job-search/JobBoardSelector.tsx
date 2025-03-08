@@ -4,6 +4,9 @@ import { Card } from "@/components/ui/card";
 import { JobBoardSelection, SearchProvider } from "./types";
 import JobBoardGroup from "./JobBoardGroup";
 import { boardGroups } from "./utils/boardGroupsConfig";
+import { Button } from "@/components/ui/button";
+import { X } from "lucide-react";
+import { toast } from "sonner";
 
 interface JobBoardSelectorProps {
   selectedBoards: JobBoardSelection;
@@ -32,10 +35,34 @@ const JobBoardSelector: React.FC<JobBoardSelectorProps> = ({
       onProviderChange(board as SearchProvider);
     }
   };
+  
+  const clearSelections = () => {
+    // Reset all boards to false except for Google
+    const newSelection = {
+      ...Object.keys(selectedBoards).reduce((acc, key) => ({
+        ...acc,
+        [key]: key === "google"
+      }), {} as JobBoardSelection)
+    };
+    
+    onBoardSelectionChange(newSelection);
+    onProviderChange("google" as SearchProvider);
+    toast.success("Cleared selections, reset to Google");
+  };
 
   return (
     <Card className="cyber-card p-4 bg-secondary/40">
-      <div className="text-sm font-medium mb-3">Select job boards to include in search:</div>
+      <div className="flex justify-between items-center mb-3">
+        <div className="text-sm font-medium">Select job boards to include in search:</div>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+          onClick={clearSelections}
+        >
+          <X className="mr-1 h-3 w-3" /> Clear
+        </Button>
+      </div>
       
       {Object.entries(boardGroups).map(([groupName, boards]) => (
         <JobBoardGroup

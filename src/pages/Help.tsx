@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { 
   Search, FileBadge, User, Settings, 
-  BookOpen, MessageCircleQuestion, HelpCircle, Lightbulb, Home
+  BookOpen, MessageCircleQuestion, HelpCircle, Lightbulb, Home,
+  Construction
 } from "lucide-react";
 
 const Help: React.FC = () => {
@@ -73,8 +74,9 @@ const Help: React.FC = () => {
                 title="External Job Board Search"
                 steps={[
                   "After generating a query, click 'External Search' to open results in your selected job board",
-                  "Use 'Open Selected' to open results in all selected job boards",
-                  "Select specific job boards under the tabs below to search by region"
+                  "Use 'Open Selected' to open results in all selected job boards from Search Options",
+                  "Select specific job boards under the tabs below to search by region",
+                  "Note: 'External Search' uses the search provider selected in the tabs above, while 'Open Selected' uses the job boards checked in Search Options"
                 ]}
               />
               
@@ -86,6 +88,7 @@ const Help: React.FC = () => {
                   "View all saved jobs in your Profile section",
                   "You must be logged in to save jobs"
                 ]}
+                isWorkInProgress={true}
               />
             </HelpSection>
           </TabsContent>
@@ -104,6 +107,7 @@ const Help: React.FC = () => {
                   "The system will parse your resume automatically",
                   "Review extracted information for accuracy"
                 ]}
+                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -114,6 +118,7 @@ const Help: React.FC = () => {
                   "You'll receive suggestions for improvement",
                   "Keywords from your resume will be added to your search profile"
                 ]}
+                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -124,6 +129,7 @@ const Help: React.FC = () => {
                   "Higher match percentages indicate better job fits",
                   "Update your resume based on these insights"
                 ]}
+                isWorkInProgress={true}
               />
             </HelpSection>
           </TabsContent>
@@ -142,6 +148,7 @@ const Help: React.FC = () => {
                   "Add professional details like skills and experience",
                   "Upload a profile photo (optional)"
                 ]}
+                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -152,6 +159,7 @@ const Help: React.FC = () => {
                   "Remove jobs you're no longer interested in",
                   "Track application status for each saved job"
                 ]}
+                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -162,6 +170,7 @@ const Help: React.FC = () => {
                   "Track interview schedules",
                   "Log all communication with employers"
                 ]}
+                isWorkInProgress={true}
               />
             </HelpSection>
           </TabsContent>
@@ -180,6 +189,7 @@ const Help: React.FC = () => {
                   "Changes are saved automatically",
                   "Theme preference is remembered for future visits"
                 ]}
+                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -190,6 +200,7 @@ const Help: React.FC = () => {
                   "API keys are securely stored",
                   "Manage and update keys anytime"
                 ]}
+                isWorkInProgress={true}
               />
               
               <HelpCard
@@ -200,6 +211,7 @@ const Help: React.FC = () => {
                   "Configure email notification settings",
                   "Enable browser notifications for real-time updates"
                 ]}
+                isWorkInProgress={true}
               />
             </HelpSection>
           </TabsContent>
@@ -252,6 +264,7 @@ const Help: React.FC = () => {
                 <FaqItem 
                   question="How do I reset my password?"
                   answer="Go to the Settings page and click on 'Change Password'. You'll need to enter your current password and then your new password twice to confirm. If you've forgotten your password, use the 'Forgot Password' link on the login page."
+                  isWorkInProgress={true}
                 />
                 
                 <FaqItem 
@@ -267,11 +280,13 @@ const Help: React.FC = () => {
                 <FaqItem 
                   question="Is my personal information secure?"
                   answer="Yes, we take security seriously. All personal data is encrypted, and we never share your information with third parties without your consent. API keys are stored using secure encryption standards."
+                  isWorkInProgress={true}
                 />
                 
                 <FaqItem 
                   question="How do I delete my account?"
                   answer="To delete your account, go to Settings > Account > Delete Account. Please note that this action is permanent and will remove all your saved jobs, searches, and personal information from our system."
+                  isWorkInProgress={true}
                 />
               </div>
             </HelpSection>
@@ -324,12 +339,21 @@ const HelpSection: React.FC<HelpSectionProps> = ({
 interface HelpCardProps {
   title: string;
   steps: string[];
+  isWorkInProgress?: boolean;
 }
 
-const HelpCard: React.FC<HelpCardProps> = ({ title, steps }) => {
+const HelpCard: React.FC<HelpCardProps> = ({ title, steps, isWorkInProgress }) => {
   return (
     <Card className="p-4 cyber-card">
-      <h3 className="text-lg font-medium mb-3 text-primary">{title}</h3>
+      <div className="flex justify-between items-start mb-3">
+        <h3 className="text-lg font-medium text-primary">{title}</h3>
+        {isWorkInProgress && (
+          <div className="flex items-center text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+            <Construction size={14} className="mr-1" />
+            <span>Coming Soon</span>
+          </div>
+        )}
+      </div>
       <ol className="list-decimal pl-5 space-y-2">
         {steps.map((step, index) => (
           <li key={index} className="text-sm pl-1 mb-2">
@@ -344,12 +368,21 @@ const HelpCard: React.FC<HelpCardProps> = ({ title, steps }) => {
 interface FaqItemProps {
   question: string;
   answer: string;
+  isWorkInProgress?: boolean;
 }
 
-const FaqItem: React.FC<FaqItemProps> = ({ question, answer }) => {
+const FaqItem: React.FC<FaqItemProps> = ({ question, answer, isWorkInProgress }) => {
   return (
     <Card className="p-4 cyber-card">
-      <h3 className="text-lg font-medium mb-2 text-primary">{question}</h3>
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="text-lg font-medium text-primary">{question}</h3>
+        {isWorkInProgress && (
+          <div className="flex items-center text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+            <Construction size={14} className="mr-1" />
+            <span>Coming Soon</span>
+          </div>
+        )}
+      </div>
       <p className="text-sm text-muted-foreground">{answer}</p>
     </Card>
   );
