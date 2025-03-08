@@ -213,6 +213,48 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          bio: string | null
+          company: string | null
+          experience_level: string | null
+          full_name: string | null
+          id: string
+          job_title: string | null
+          location: string | null
+          phone: string | null
+          skills: string | null
+          updated_at: string | null
+          website: string | null
+        }
+        Insert: {
+          bio?: string | null
+          company?: string | null
+          experience_level?: string | null
+          full_name?: string | null
+          id: string
+          job_title?: string | null
+          location?: string | null
+          phone?: string | null
+          skills?: string | null
+          updated_at?: string | null
+          website?: string | null
+        }
+        Update: {
+          bio?: string | null
+          company?: string | null
+          experience_level?: string | null
+          full_name?: string | null
+          id?: string
+          job_title?: string | null
+          location?: string | null
+          phone?: string | null
+          skills?: string | null
+          updated_at?: string | null
+          website?: string | null
+        }
+        Relationships: []
+      }
       search_history: {
         Row: {
           created_at: string | null

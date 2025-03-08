@@ -50,9 +50,7 @@ const ProfileForm: React.FC = () => {
           .single();
           
         if (error) {
-          if (error.code !== 'PGRST116') { // Not found error
-            console.error("Error fetching profile:", error);
-          }
+          console.error("Error fetching profile:", error);
           return;
         }
         
