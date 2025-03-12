@@ -6,6 +6,7 @@ import { Upload, FileText, Play, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { EvaluationDataItem, EvaluationResult } from "./types";
 import { runEvaluation } from "./evaluationService";
+import Papa from "papaparse";
 
 interface EvaluationUploaderProps {
   onDataLoaded: (data: EvaluationDataItem[]) => void;
@@ -25,6 +26,35 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const parseCSV = (text: string): EvaluationDataItem[] => {
+    const results = Papa.parse(text, { header: true, skipEmptyLines: true });
+    
+    if (!results.data || !Array.isArray(results.data) || results.data.length === 0) {
+      throw new Error("Invalid CSV format or empty file");
+    }
+
+    return results.data.map((row: any, index) => {
+      // Extract ground truth keywords from the CSV
+      // Assuming format: keyword1:frequency,keyword2:frequency
+      const groundTruthStr = row.groundTruth || "";
+      const groundTruth = groundTruthStr.split(',')
+        .map(item => {
+          const [keyword, frequency] = item.split(':');
+          return {
+            keyword: keyword?.trim() || "",
+            frequency: parseInt(frequency?.trim() || "1", 10) || 1
+          };
+        })
+        .filter(item => item.keyword); // Remove empty items
+
+      return {
+        id: row.id || `item-${index}`,
+        description: row.description || "",
+        groundTruth
+      };
+    });
+  };
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -35,28 +65,37 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        const parsed = JSON.parse(content);
+        let parsed: EvaluationDataItem[];
 
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          throw new Error("Invalid dataset format. Expecting an array of evaluation items.");
-        }
+        // Process based on file extension
+        if (file.name.toLowerCase().endsWith('.csv')) {
+          parsed = parseCSV(content);
+        } else if (file.name.toLowerCase().endsWith('.json')) {
+          parsed = JSON.parse(content);
+          
+          // Validate JSON structure
+          if (!Array.isArray(parsed) || parsed.length === 0) {
+            throw new Error("Invalid dataset format. Expecting an array of evaluation items.");
+          }
 
-        // Validate structure
-        const isValid = parsed.every((item: any) => 
-          item.description && 
-          Array.isArray(item.groundTruth) &&
-          item.groundTruth.every((k: any) => k.keyword && typeof k.frequency === 'number')
-        );
+          const isValid = parsed.every((item: any) => 
+            item.description && 
+            Array.isArray(item.groundTruth) &&
+            item.groundTruth.every((k: any) => k.keyword && typeof k.frequency === 'number')
+          );
 
-        if (!isValid) {
-          throw new Error("Invalid dataset structure. Check the documentation for the correct format.");
+          if (!isValid) {
+            throw new Error("Invalid dataset structure. Check the documentation for the correct format.");
+          }
+        } else {
+          throw new Error("Unsupported file format. Please upload a .json or .csv file.");
         }
 
         toast.success(`Successfully loaded dataset with ${parsed.length} items`);
         onDataLoaded(parsed);
       } catch (error) {
-        console.error("Error parsing JSON:", error);
-        toast.error("Failed to parse dataset. Please check the format.");
+        console.error("Error parsing file:", error);
+        toast.error(`Failed to parse dataset: ${(error as Error).message}`);
         setFileName(null);
       }
     };
@@ -89,7 +128,7 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
           <Upload className="h-12 w-12 text-primary/50 mb-4" />
           <h3 className="text-lg font-medium mb-2">Upload Evaluation Dataset</h3>
           <p className="text-sm text-muted-foreground mb-4 max-w-md">
-            Upload a JSON file containing job descriptions and manually annotated keywords.
+            Upload a JSON or CSV file containing job descriptions and manually annotated keywords.
             See documentation for the required format.
           </p>
           <Button 
@@ -99,12 +138,12 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
             className="cyber-card"
           >
             <FileText className="mr-2 h-4 w-4" />
-            Choose JSON File
+            Choose File
           </Button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json"
+            accept=".json,.csv"
             className="hidden"
             onChange={handleFileUpload}
           />
@@ -163,8 +202,12 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
           <AlertTriangle className="h-4 w-4 mr-2" />
           Dataset Format
         </h4>
-        <p className="mb-2">The JSON file should contain an array of objects with the following structure:</p>
-        <pre className="bg-black/20 p-3 rounded text-xs overflow-auto">
+        <p className="mb-2">The evaluation tool accepts the following file formats:</p>
+        
+        <div className="space-y-4">
+          <div>
+            <h5 className="font-medium text-xs mb-1">JSON Format</h5>
+            <pre className="bg-black/20 p-3 rounded text-xs overflow-auto">
 {`[
   {
     "id": "job1",
@@ -176,7 +219,22 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
   },
   ...
 ]`}
-        </pre>
+            </pre>
+          </div>
+          
+          <div>
+            <h5 className="font-medium text-xs mb-1">CSV Format</h5>
+            <pre className="bg-black/20 p-3 rounded text-xs overflow-auto">
+{`id,description,groundTruth
+job1,"Full job description text...","React:5,JavaScript:4,TypeScript:3"
+job2,"Another job description...","Python:6,AWS:4,Docker:2"
+...`}
+            </pre>
+            <p className="mt-1 text-xs">
+              For CSV files, the groundTruth column should contain comma-separated keyword:frequency pairs.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -12,6 +12,14 @@ const Evaluation = () => {
   const [evaluationData, setEvaluationData] = useState<EvaluationDataItem[]>([]);
   const [results, setResults] = useState<EvaluationResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [activeTab, setActiveTab] = useState("upload");
+
+  // Update active tab when results become available
+  const handleResultsComplete = (results: EvaluationResult) => {
+    setResults(results);
+    setIsProcessing(false);
+    setActiveTab("results"); // Automatically switch to results tab
+  };
 
   return (
     <div className="min-h-screen matrix-bg p-4 md:p-8 font-mono">
@@ -24,10 +32,10 @@ const Evaluation = () => {
           
           <p className="text-muted-foreground mb-6">
             Evaluate the performance of the keyword extraction algorithm against a ground truth dataset.
-            Upload a dataset, run the evaluation, and compare results with baseline methods.
+            Upload a dataset (JSON or CSV), run the evaluation, and compare results with baseline methods.
           </p>
           
-          <Tabs defaultValue="upload" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid grid-cols-3 mb-6">
               <TabsTrigger value="upload">Upload Dataset</TabsTrigger>
               <TabsTrigger value="results" disabled={!results}>Results</TabsTrigger>
@@ -38,10 +46,7 @@ const Evaluation = () => {
               <EvaluationUploader 
                 onDataLoaded={setEvaluationData} 
                 onProcessingStart={() => setIsProcessing(true)}
-                onProcessingComplete={(results) => {
-                  setResults(results);
-                  setIsProcessing(false);
-                }}
+                onProcessingComplete={handleResultsComplete}
                 isProcessing={isProcessing}
                 dataItems={evaluationData}
               />
