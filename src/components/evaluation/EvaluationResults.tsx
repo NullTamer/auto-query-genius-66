@@ -67,7 +67,7 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis unit="%" domain={[0, 100]} />
-              <Tooltip formatter={(value) => [`${value}%`, ``]} />
+              <Tooltip formatter={(value) => [`${value}%`, '']} />
               <Legend />
               <Bar dataKey="AI" fill="#22c55e" name="AI Algorithm" />
               <Bar dataKey="Baseline" fill="#3b82f6" name="Baseline" />
@@ -91,48 +91,50 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
         </div>
       </Card>
 
-      <Tabs defaultValue={results.perItem[0]?.id.toString() || "item0"}>
-        <h3 className="text-lg font-medium mb-4">Per-Item Results</h3>
-        <TabsList className="mb-4 overflow-x-auto flex w-full">
+      {results.perItem.length > 0 && (
+        <Tabs defaultValue={results.perItem[0]?.id?.toString() || "item0"}>
+          <h3 className="text-lg font-medium mb-4">Per-Item Results</h3>
+          <TabsList className="mb-4 overflow-x-auto flex w-full">
+            {results.perItem.map((item, index) => (
+              <TabsTrigger key={index} value={item.id?.toString() || `item${index}`}>
+                Item {index + 1}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
           {results.perItem.map((item, index) => (
-            <TabsTrigger key={index} value={item.id.toString() || `item${index}`}>
-              Item {index + 1}
-            </TabsTrigger>
+            <TabsContent key={index} value={item.id?.toString() || `item${index}`}>
+              <Card className="p-4 md:p-6 cyber-card">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 text-center">
+                  <div className="p-3 bg-primary/10 rounded-md">
+                    <p className="text-sm text-muted-foreground mb-1">Precision</p>
+                    <p className="text-xl font-semibold">{(item.metrics.precision * 100).toFixed(1)}%</p>
+                  </div>
+                  <div className="p-3 bg-primary/10 rounded-md">
+                    <p className="text-sm text-muted-foreground mb-1">Recall</p>
+                    <p className="text-xl font-semibold">{(item.metrics.recall * 100).toFixed(1)}%</p>
+                  </div>
+                  <div className="p-3 bg-primary/10 rounded-md">
+                    <p className="text-sm text-muted-foreground mb-1">F1 Score</p>
+                    <p className="text-xl font-semibold">{(item.metrics.f1Score * 100).toFixed(1)}%</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Ground Truth Keywords ({item.groundTruth.length})</h4>
+                    {renderKeywordList(item.groundTruth)}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({item.extractedKeywords.length})</h4>
+                    {renderKeywordList(item.extractedKeywords)}
+                  </div>
+                </div>
+              </Card>
+            </TabsContent>
           ))}
-        </TabsList>
-
-        {results.perItem.map((item, index) => (
-          <TabsContent key={index} value={item.id.toString() || `item${index}`}>
-            <Card className="p-4 md:p-6 cyber-card">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 text-center">
-                <div className="p-3 bg-primary/10 rounded-md">
-                  <p className="text-sm text-muted-foreground mb-1">Precision</p>
-                  <p className="text-xl font-semibold">{(item.metrics.precision * 100).toFixed(1)}%</p>
-                </div>
-                <div className="p-3 bg-primary/10 rounded-md">
-                  <p className="text-sm text-muted-foreground mb-1">Recall</p>
-                  <p className="text-xl font-semibold">{(item.metrics.recall * 100).toFixed(1)}%</p>
-                </div>
-                <div className="p-3 bg-primary/10 rounded-md">
-                  <p className="text-sm text-muted-foreground mb-1">F1 Score</p>
-                  <p className="text-xl font-semibold">{(item.metrics.f1Score * 100).toFixed(1)}%</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Ground Truth Keywords ({item.groundTruth.length})</h4>
-                  {renderKeywordList(item.groundTruth)}
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({item.extractedKeywords.length})</h4>
-                  {renderKeywordList(item.extractedKeywords)}
-                </div>
-              </div>
-            </Card>
-          </TabsContent>
-        ))}
-      </Tabs>
+        </Tabs>
+      )}
     </div>
   );
 };

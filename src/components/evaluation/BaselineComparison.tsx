@@ -89,7 +89,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ results }) => {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis unit="%" />
-                <Tooltip formatter={(value) => [`${value}%`, `Improvement`]} />
+                <Tooltip formatter={(value) => [`${value}%`, 'Improvement']} />
                 <Bar dataKey="value" fill="#22c55e" name="Improvement %" />
               </BarChart>
             </ResponsiveContainer>
@@ -144,33 +144,35 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ results }) => {
         </div>
       </Card>
 
-      <Tabs defaultValue={results.perItem[0]?.id.toString() || "item0"}>
-        <h3 className="text-lg font-medium mb-4">Per-Item Comparisons</h3>
-        <TabsList className="mb-4 overflow-x-auto flex w-full">
-          {results.perItem.map((item, index) => (
-            <TabsTrigger key={index} value={item.id.toString() || `item${index}`}>
-              Item {index + 1}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+      {results.perItem.length > 0 && (
+        <Tabs defaultValue={results.perItem[0]?.id?.toString() || "item0"}>
+          <h3 className="text-lg font-medium mb-4">Per-Item Comparisons</h3>
+          <TabsList className="mb-4 overflow-x-auto flex w-full">
+            {results.perItem.map((item, index) => (
+              <TabsTrigger key={index} value={item.id?.toString() || `item${index}`}>
+                Item {index + 1}
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        {results.perItem.map((item, index) => (
-          <TabsContent key={index} value={item.id.toString() || `item${index}`}>
-            <Card className="p-4 md:p-6 cyber-card">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({item.extractedKeywords.length})</h4>
-                  {renderKeywordList(item.extractedKeywords)}
+          {results.perItem.map((item, index) => (
+            <TabsContent key={index} value={item.id?.toString() || `item${index}`}>
+              <Card className="p-4 md:p-6 cyber-card">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({item.extractedKeywords.length})</h4>
+                    {renderKeywordList(item.extractedKeywords)}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Baseline Keywords ({item.baselineKeywords.length})</h4>
+                    {renderKeywordList(item.baselineKeywords)}
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Baseline Keywords ({item.baselineKeywords.length})</h4>
-                  {renderKeywordList(item.baselineKeywords)}
-                </div>
-              </div>
-            </Card>
-          </TabsContent>
-        ))}
-      </Tabs>
+              </Card>
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
     </div>
   );
 };
