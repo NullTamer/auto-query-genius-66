@@ -10,6 +10,7 @@ import ResumeManager from "./pages/ResumeManager";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
+import Evaluation from "./pages/Evaluation";
 import { Toaster } from "@/components/ui/toaster";
 import "./App.css";
 
@@ -48,6 +49,7 @@ function App() {
         <Route path="/resume" element={<Resume />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />
+        <Route path="/evaluation" element={<Evaluation />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <Toaster />
