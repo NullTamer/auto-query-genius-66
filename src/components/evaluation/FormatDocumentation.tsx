@@ -1,6 +1,7 @@
 
 import React from "react";
 import { AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const FormatDocumentation: React.FC = () => {
   return (
@@ -56,6 +57,14 @@ Apple,"description","Apple Solutions Consultant",828,{"keywords":[{"term":"apple
           </p>
         </div>
       </div>
+      
+      <Alert className="mt-4 bg-primary/5 border-primary/20">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription className="text-xs">
+          Note: Due to API rate limits, large datasets may be partially processed using the baseline algorithm 
+          instead of the AI model. This helps prevent quota exhaustion errors.
+        </AlertDescription>
+      </Alert>
     </div>
   );
 };

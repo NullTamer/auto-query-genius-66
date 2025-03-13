@@ -2,10 +2,11 @@
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Upload, FileText } from "lucide-react";
+import { Upload, FileText, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { EvaluationDataItem } from "./types";
 import Papa from "papaparse";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface FileUploadSectionProps {
   onDataLoaded: (data: EvaluationDataItem[]) => void;
@@ -17,6 +18,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
   isProcessing
 }) => {
   const [fileName, setFileName] = useState<string | null>(null);
+  const [datasetSize, setDatasetSize] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const parseCSV = (text: string): EvaluationDataItem[] => {
@@ -133,12 +135,23 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
           throw new Error("Unsupported file format. Please upload a .json or .csv file.");
         }
 
-        toast.success(`Successfully loaded dataset with ${parsed.length} items`);
+        setDatasetSize(parsed.length);
+        
+        // Warn if dataset is large
+        if (parsed.length > 50) {
+          toast.warning(`Large dataset (${parsed.length} items) detected. Evaluation may use baseline algorithm for some items to conserve API quota.`, {
+            duration: 7000
+          });
+        } else {
+          toast.success(`Successfully loaded dataset with ${parsed.length} items`);
+        }
+        
         onDataLoaded(parsed);
       } catch (error) {
         console.error("Error parsing file:", error);
         toast.error(`Failed to parse dataset: ${(error as Error).message}`);
         setFileName(null);
+        setDatasetSize(0);
       }
     };
 
@@ -154,6 +167,17 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
           Upload a JSON or CSV file containing job descriptions and manually annotated keywords.
           See documentation for the required format.
         </p>
+        
+        {datasetSize > 25 && (
+          <Alert className="mb-4 bg-yellow-500/10 border-yellow-600/30 text-left">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <AlertDescription className="text-xs">
+              Due to API quota limitations, evaluation of large datasets will use a mix of AI and baseline algorithms.
+              Some items may be processed using only the baseline algorithm.
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <Button 
           variant="outline"
           onClick={() => fileInputRef.current?.click()}

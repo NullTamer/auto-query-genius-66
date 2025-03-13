@@ -2,7 +2,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Play } from "lucide-react";
+import { Play, Loader2 } from "lucide-react";
 import { EvaluationDataItem } from "./types";
 
 interface DatasetPreviewProps {
@@ -33,8 +33,14 @@ const DatasetPreview: React.FC<DatasetPreviewProps> = ({
           onClick={onRunEvaluation} 
           disabled={isProcessing}
           className="cyber-card"
+          variant={isProcessing ? "outline" : "default"}
         >
-          {isProcessing ? "Processing..." : (
+          {isProcessing ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Processing...
+            </>
+          ) : (
             <>
               <Play className="mr-2 h-4 w-4" />
               Run Evaluation
@@ -58,6 +64,16 @@ const DatasetPreview: React.FC<DatasetPreviewProps> = ({
         <p className="text-xs text-muted-foreground">
           And {dataItems.length - 2} more items...
         </p>
+      )}
+
+      {isProcessing && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          <p className="animate-pulse">
+            Processing dataset... 
+            This might take a while for large datasets.
+            {dataItems.length > 10 && " Using a mix of AI and baseline algorithms to stay within API limits."}
+          </p>
+        </div>
       )}
     </div>
   );

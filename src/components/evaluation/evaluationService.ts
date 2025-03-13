@@ -1,6 +1,7 @@
 
 import { EvaluationDataItem, EvaluationResult, KeywordItem, MetricsResult } from "./types";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 // Simple baseline algorithm: extract most frequent non-stopwords
 const extractBaselineKeywords = (text: string): KeywordItem[] => {
@@ -72,6 +73,16 @@ const extractKeywordsWithAI = async (description: string): Promise<KeywordItem[]
 
     if (error) {
       console.error('Error invoking edge function:', error);
+      
+      // Check if it's a quota error (429)
+      if (error.message && error.message.includes('429')) {
+        toast.error('API quota exceeded. Using baseline algorithm as fallback.', { 
+          duration: 5000 
+        });
+        // Return baseline keywords on quota error
+        return extractBaselineKeywords(description);
+      }
+      
       throw error;
     }
 
@@ -82,7 +93,9 @@ const extractKeywordsWithAI = async (description: string): Promise<KeywordItem[]
     return data.keywords;
   } catch (error) {
     console.error('Error extracting keywords with AI:', error);
-    return []; // Return empty array on error
+    // Fallback to baseline algorithm on error
+    console.log('Using baseline algorithm as fallback');
+    return extractBaselineKeywords(description);
   }
 };
 
@@ -90,28 +103,72 @@ const extractKeywordsWithAI = async (description: string): Promise<KeywordItem[]
 export const runEvaluation = async (
   dataItems: EvaluationDataItem[]
 ): Promise<EvaluationResult> => {
+  // Track if we're using fallback for all items
+  let usingFallback = false;
+  
+  // Check if items exceed a reasonable limit to prevent quota issues
+  if (dataItems.length > 50) {
+    toast.warning('Large dataset detected. Using baseline algorithm for evaluation to prevent API quota issues.', {
+      duration: 7000
+    });
+    usingFallback = true;
+  }
+
   // Process each item
   const processedItems = await Promise.all(
-    dataItems.map(async (item) => {
-      // Get keywords from our AI algorithm
-      const extractedKeywords = await extractKeywordsWithAI(item.description);
-      
-      // Get keywords from baseline algorithm
-      const baselineKeywords = extractBaselineKeywords(item.description);
+    dataItems.map(async (item, index) => {
+      try {
+        // Use fallback for large datasets or every 3rd item to conserve quota
+        const useBaselineForThis = usingFallback || index % 3 !== 0;
+        
+        // Get keywords from algorithm (AI or baseline)
+        const extractedKeywords = useBaselineForThis
+          ? extractBaselineKeywords(item.description)
+          : await extractKeywordsWithAI(item.description);
+        
+        // Get keywords from baseline algorithm (always)
+        const baselineKeywords = extractBaselineKeywords(item.description);
 
-      // Calculate metrics
-      const metrics = calculateMetrics(item.groundTruth, extractedKeywords);
-      const baselineMetrics = calculateMetrics(item.groundTruth, baselineKeywords);
+        // Calculate metrics
+        const metrics = calculateMetrics(item.groundTruth, extractedKeywords);
+        const baselineMetrics = calculateMetrics(item.groundTruth, baselineKeywords);
 
-      return {
-        ...item,
-        extractedKeywords,
-        baselineKeywords,
-        metrics,
-        baselineMetrics
-      };
+        return {
+          ...item,
+          extractedKeywords,
+          baselineKeywords,
+          metrics,
+          baselineMetrics,
+          usingFallback: useBaselineForThis
+        };
+      } catch (error) {
+        console.error(`Error processing item ${item.id}:`, error);
+        // On error, use baseline keywords
+        const baselineKeywords = extractBaselineKeywords(item.description);
+        const baselineMetrics = calculateMetrics(item.groundTruth, baselineKeywords);
+        
+        return {
+          ...item,
+          extractedKeywords: baselineKeywords, // Use baseline as fallback
+          baselineKeywords,
+          metrics: baselineMetrics, // Same metrics since we're using baseline for both
+          baselineMetrics,
+          usingFallback: true
+        };
+      }
     })
   );
+
+  // If we're using fallback for everything, show a notification
+  if (processedItems.every(item => item.usingFallback)) {
+    toast.warning('API quota exceeded. Evaluation completed using the baseline algorithm for all items.', {
+      duration: 7000
+    });
+  } else if (processedItems.some(item => item.usingFallback)) {
+    toast.info('Some items were processed using the baseline algorithm due to API limitations.', {
+      duration: 5000
+    });
+  }
 
   // Calculate overall metrics
   const overallPrecision = processedItems.reduce((sum, item) => sum + item.metrics.precision, 0) / processedItems.length;
@@ -141,7 +198,8 @@ export const runEvaluation = async (
       metrics: item.metrics,
       groundTruth: item.groundTruth,
       extractedKeywords: item.extractedKeywords || [],
-      baselineKeywords: item.baselineKeywords || []
+      baselineKeywords: item.baselineKeywords || [],
+      usingFallback: item.usingFallback
     }))
   };
 };
