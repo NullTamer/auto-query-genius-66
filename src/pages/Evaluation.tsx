@@ -15,10 +15,23 @@ const Evaluation = () => {
   const [activeTab, setActiveTab] = useState("upload");
 
   // Update active tab when results become available
-  const handleResultsComplete = (results: EvaluationResult) => {
-    setResults(results);
-    setIsProcessing(false);
-    setActiveTab("results"); // Automatically switch to results tab
+  const handleResultsComplete = (newResults: EvaluationResult) => {
+    if (newResults && typeof newResults === 'object') {
+      // Make sure we have a valid results object
+      const validResults = {
+        overall: newResults.overall || { precision: 0, recall: 0, f1Score: 0 },
+        baseline: newResults.baseline || { precision: 0, recall: 0, f1Score: 0 },
+        perItem: Array.isArray(newResults.perItem) ? newResults.perItem : []
+      };
+      
+      // Set the validated results
+      setResults(validResults);
+      setIsProcessing(false);
+      setActiveTab("results");
+    } else {
+      console.error("Invalid results received:", newResults);
+      setIsProcessing(false);
+    }
   };
 
   return (

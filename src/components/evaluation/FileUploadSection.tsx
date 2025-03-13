@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,81 +21,131 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const parseCSV = (text: string): EvaluationDataItem[] => {
-    const results = Papa.parse(text, { header: true, skipEmptyLines: true });
-    
-    if (!results.data || !Array.isArray(results.data) || results.data.length === 0) {
-      throw new Error("Invalid CSV format or empty file");
-    }
-
-    return results.data.map((row: any, index) => {
-      let description = "";
-      let groundTruth: any[] = [];
+    try {
+      const results = Papa.parse(text, { header: true, skipEmptyLines: true });
       
-      // Handle the new CSV format with job_description and position_title
-      if (row.job_description || row.description) {
-        description = row.job_description || row.description || "";
+      if (!results.data || !Array.isArray(results.data) || results.data.length === 0) {
+        throw new Error("Invalid CSV format or empty file");
+      }
+
+      console.log("CSV parsing result:", {
+        rowCount: results.data.length,
+        firstRow: results.data[0],
+        fields: Object.keys(results.data[0] || {})
+      });
+
+      return results.data.map((row: any, index) => {
+        // Ensure we have a valid row object
+        if (!row || typeof row !== 'object') {
+          console.warn("Invalid row at index", index, row);
+          return null;
+        }
+
+        let description = "";
+        let groundTruth: any[] = [];
+        let id = row.company_name || row.id || `item-${index}`;
         
-        // If there's a position_title, prepend it to the description
-        if (row.position_title) {
-          description = `${row.position_title}: ${description}`;
+        // Handle the description field
+        if (row.job_description || row.description) {
+          description = row.job_description || row.description || "";
+          
+          // If there's a position_title, prepend it to the description
+          if (row.position_title) {
+            description = `${row.position_title}: ${description}`;
+          }
+        } else {
+          console.warn("Row missing description at index", index);
         }
-      } else if (typeof row.description === 'string') {
-        description = row.description;
+        
+        // Try to parse ground truth from different possible formats
+        if (row.model_response && typeof row.model_response === 'string') {
+          try {
+            // Attempt to parse the model_response as JSON
+            const modelResponse = JSON.parse(row.model_response);
+            
+            // If it's an object with keywords, use those as groundTruth
+            if (modelResponse && Array.isArray(modelResponse.keywords)) {
+              groundTruth = modelResponse.keywords.map((kw: any) => ({
+                keyword: kw.term || kw.keyword || "",
+                frequency: kw.count || kw.frequency || 1
+              }));
+            } else if (modelResponse && typeof modelResponse === 'object') {
+              // If it's just an object, create a simple array of keyword items
+              groundTruth = Object.entries(modelResponse).map(([key, value]) => ({
+                keyword: key,
+                frequency: typeof value === 'number' ? value : 1
+              }));
+            }
+          } catch (error) {
+            console.warn("Could not parse model_response as JSON at index", index, error);
+            
+            // If parsing fails, try the original CSV format with groundTruth as a string
+            if (row.groundTruth && typeof row.groundTruth === 'string') {
+              groundTruth = parseGroundTruthString(row.groundTruth);
+            }
+          }
+        } else if (row.groundTruth && typeof row.groundTruth === 'string') {
+          // Fall back to original format if model_response isn't available
+          groundTruth = parseGroundTruthString(row.groundTruth);
+        } else if (row.keywords && typeof row.keywords === 'string') {
+          // Try another possible field name
+          groundTruth = parseGroundTruthString(row.keywords);
+        }
+
+        // Log if no ground truth was found
+        if (groundTruth.length === 0) {
+          console.warn("No ground truth found for row at index", index);
+        }
+
+        return {
+          id,
+          description,
+          groundTruth
+        };
+      }).filter(Boolean); // Remove null items
+    } catch (error) {
+      console.error("Error parsing CSV:", error);
+      throw error;
+    }
+  };
+
+  // Helper function to parse ground truth string into keyword items
+  const parseGroundTruthString = (groundTruthStr: string): any[] => {
+    if (!groundTruthStr) return [];
+    
+    try {
+      // Try to parse as JSON first
+      if (groundTruthStr.trim().startsWith('[') || groundTruthStr.trim().startsWith('{')) {
+        const parsed = JSON.parse(groundTruthStr);
+        if (Array.isArray(parsed)) {
+          return parsed.map(item => {
+            if (typeof item === 'string') {
+              return { keyword: item, frequency: 1 };
+            } else if (item && typeof item === 'object') {
+              return {
+                keyword: item.keyword || item.term || "",
+                frequency: item.frequency || item.count || 1
+              };
+            }
+            return null;
+          }).filter(Boolean);
+        }
       }
       
-      // Try to parse model_response as JSON if it exists
-      if (row.model_response && typeof row.model_response === 'string') {
-        try {
-          // Attempt to parse the model_response as JSON
-          const modelResponse = JSON.parse(row.model_response);
-          
-          // If it's an object with keywords, use those as groundTruth
-          if (modelResponse && Array.isArray(modelResponse.keywords)) {
-            groundTruth = modelResponse.keywords.map((kw: any) => ({
-              keyword: kw.term || kw.keyword || "",
-              frequency: kw.count || kw.frequency || 1
-            }));
-          } else if (modelResponse && typeof modelResponse === 'object') {
-            // If it's just an object, create a simple array of keyword items
-            groundTruth = Object.entries(modelResponse).map(([key, value]) => ({
-              keyword: key,
-              frequency: typeof value === 'number' ? value : 1
-            }));
-          }
-        } catch (error) {
-          console.warn("Could not parse model_response as JSON", error);
-          // If parsing fails, try the original CSV format with groundTruth as a string
-          const groundTruthStr = row.groundTruth || "";
-          groundTruth = groundTruthStr.split(',')
-            .map((item: string) => {
-              const [keyword, frequency] = item.split(':');
-              return {
-                keyword: keyword?.trim() || "",
-                frequency: parseInt(frequency?.trim() || "1", 10) || 1
-              };
-            })
-            .filter((item: any) => item.keyword);
-        }
-      } else if (row.groundTruth) {
-        // Fall back to original format if model_response isn't available
-        const groundTruthStr = row.groundTruth || "";
-        groundTruth = groundTruthStr.split(',')
-          .map((item: string) => {
-            const [keyword, frequency] = item.split(':');
-            return {
-              keyword: keyword?.trim() || "",
-              frequency: parseInt(frequency?.trim() || "1", 10) || 1
-            };
-          })
-          .filter((item: any) => item.keyword);
-      }
-
-      return {
-        id: row.company_name || row.id || `item-${index}`,
-        description,
-        groundTruth
-      };
-    });
+      // Otherwise parse as comma-separated string
+      return groundTruthStr.split(',')
+        .map((item: string) => {
+          const [keyword, frequency] = item.split(':');
+          return {
+            keyword: keyword?.trim() || "",
+            frequency: parseInt(frequency?.trim() || "1", 10) || 1
+          };
+        })
+        .filter((item: any) => item.keyword);
+    } catch (error) {
+      console.warn("Error parsing ground truth string:", error);
+      return [];
+    }
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,31 +158,75 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
+        if (!content) {
+          throw new Error("Could not read file content");
+        }
+        
         let parsed: EvaluationDataItem[];
 
         // Process based on file extension
         if (file.name.toLowerCase().endsWith('.csv')) {
           parsed = parseCSV(content);
         } else if (file.name.toLowerCase().endsWith('.json')) {
-          parsed = JSON.parse(content);
+          const jsonData = JSON.parse(content);
           
           // Validate JSON structure
-          if (!Array.isArray(parsed) || parsed.length === 0) {
+          if (!Array.isArray(jsonData) || jsonData.length === 0) {
             throw new Error("Invalid dataset format. Expecting an array of evaluation items.");
           }
 
-          const isValid = parsed.every((item: any) => 
-            item.description && 
-            Array.isArray(item.groundTruth) &&
-            item.groundTruth.every((k: any) => k.keyword && typeof k.frequency === 'number')
-          );
-
-          if (!isValid) {
-            throw new Error("Invalid dataset structure. Check the documentation for the correct format.");
-          }
+          // Validate and transform items if needed
+          parsed = jsonData.map((item, index) => {
+            // Ensure required fields exist
+            if (!item || typeof item !== 'object') {
+              console.warn("Invalid item in JSON at index", index);
+              return null;
+            }
+            
+            // Ensure description exists
+            if (!item.description) {
+              console.warn("Missing description in item at index", index);
+              return null;
+            }
+            
+            // Validate and transform ground truth
+            let groundTruth = [];
+            if (Array.isArray(item.groundTruth)) {
+              groundTruth = item.groundTruth.map((kw: any) => {
+                if (typeof kw === 'string') {
+                  return { keyword: kw, frequency: 1 };
+                } else if (kw && typeof kw === 'object') {
+                  return {
+                    keyword: kw.keyword || "",
+                    frequency: typeof kw.frequency === 'number' ? kw.frequency : 1
+                  };
+                }
+                return null;
+              }).filter(Boolean);
+            } else {
+              console.warn("Missing or invalid groundTruth in item at index", index);
+            }
+            
+            return {
+              id: item.id || `item-${index}`,
+              description: item.description,
+              groundTruth
+            };
+          }).filter(Boolean);
         } else {
           throw new Error("Unsupported file format. Please upload a .json or .csv file.");
         }
+
+        // Further validation
+        if (!parsed || parsed.length === 0) {
+          throw new Error("No valid evaluation items found in the file.");
+        }
+
+        console.log("Parsed dataset:", {
+          itemCount: parsed.length,
+          firstItem: parsed[0],
+          lastItem: parsed[parsed.length - 1]
+        });
 
         setDatasetSize(parsed.length);
         
