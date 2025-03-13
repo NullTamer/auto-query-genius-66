@@ -21,6 +21,86 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
   const [datasetSize, setDatasetSize] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Helper function to extract keywords from JSON string in model_response
+  const extractKeywordsFromModelResponse = (modelResponse: string): any[] => {
+    try {
+      console.log("Trying to parse model_response:", modelResponse);
+      
+      // Check if it's already a valid JSON string format
+      if (modelResponse && typeof modelResponse === 'string') {
+        // Clean up the string - some CSV exports might have formatting issues
+        let cleanedJson = modelResponse.trim();
+        
+        // Parse the JSON
+        const parsedData = JSON.parse(cleanedJson);
+        
+        // Look for keywords in common fields
+        if (parsedData) {
+          // If it has Core Responsibilities or similar fields, extract keywords from there
+          const possibleKeywordSources = [
+            parsedData.keywords,
+            parsedData.Core_Responsibilities,
+            parsedData["Core Responsibilities"],
+            parsedData.skills,
+            parsedData.tags
+          ];
+          
+          for (const source of possibleKeywordSources) {
+            if (Array.isArray(source)) {
+              return source.map(kw => typeof kw === 'string' ? { keyword: kw, frequency: 1 } : kw);
+            } else if (source && typeof source === 'string') {
+              return source.split(',').map(kw => ({ keyword: kw.trim(), frequency: 1 }));
+            }
+          }
+          
+          // If we found structured data but no keywords array, look for key-value pairs
+          if (typeof parsedData === 'object') {
+            // Extract keys from the object as keywords
+            const extractedKeywords = [];
+            for (const [key, value] of Object.entries(parsedData)) {
+              if (key !== 'N/A' && key !== 'n/a' && key.length > 2) {
+                if (typeof value === 'string' && value !== 'N/A') {
+                  extractedKeywords.push({
+                    keyword: key.trim(),
+                    frequency: 1,
+                    category: value
+                  });
+                } else {
+                  extractedKeywords.push({
+                    keyword: key.trim(),
+                    frequency: 1
+                  });
+                }
+              }
+            }
+            if (extractedKeywords.length > 0) {
+              return extractedKeywords;
+            }
+          }
+        }
+      }
+      
+      // If we couldn't extract structured data, just extract the content as plain text
+      return [{ keyword: "No valid keywords found", frequency: 0 }];
+    } catch (error) {
+      console.error("Error parsing model_response:", error, "Original:", modelResponse);
+      
+      // Fall back to basic string parsing if JSON parsing fails
+      if (modelResponse && typeof modelResponse === 'string') {
+        // Try to extract anything that looks like a keyword
+        const keywordMatches = modelResponse.match(/["']([^"']+)["']/g);
+        if (keywordMatches && keywordMatches.length > 0) {
+          return keywordMatches.map(match => ({
+            keyword: match.replace(/["']/g, '').trim(),
+            frequency: 1
+          }));
+        }
+      }
+      
+      return [{ keyword: "Failed to parse", frequency: 0 }];
+    }
+  };
+
   const parseCSV = (text: string): EvaluationDataItem[] => {
     try {
       // Parse CSV with header
@@ -64,91 +144,78 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
             return null;
           }
           
-          // Extract ground truth keywords from various possible formats
+          // Extract ground truth keywords from model_response
           let groundTruth: any[] = [];
           
-          // Try different potential field names for keywords
-          const keywordFields = [
-            'keywords', 'model_response', 'ground_truth', 'groundtruth', 
-            'ground_truth_keywords', 'actual_keywords', 'expected_keywords',
-            'manual_keywords', 'annotated_keywords'
-          ];
+          // Check for model_response field first
+          if (row.model_response && typeof row.model_response === 'string') {
+            groundTruth = extractKeywordsFromModelResponse(row.model_response);
+            console.log(`Extracted ${groundTruth.length} keywords from model_response for row ${index}`);
+          }
           
-          // Check each possible field name
-          for (const field of keywordFields) {
-            if (row[field] && typeof row[field] === 'string') {
-              try {
-                // Try to parse as JSON
-                if (row[field].trim().startsWith('[') || row[field].trim().startsWith('{')) {
-                  const parsed = JSON.parse(row[field]);
-                  
-                  if (Array.isArray(parsed)) {
-                    // Handle array of strings or objects
-                    groundTruth = parsed.map(item => {
-                      if (typeof item === 'string') {
-                        return { keyword: item.trim(), frequency: 1 };
-                      } else if (item && typeof item === 'object') {
-                        return {
-                          keyword: (item.keyword || item.term || item.text || "").trim(),
-                          frequency: item.frequency || item.count || item.weight || 1
-                        };
-                      }
-                      return null;
-                    }).filter(Boolean);
-                    break;
-                  } else if (parsed && typeof parsed === 'object') {
-                    // Handle object with key-value pairs
-                    groundTruth = Object.entries(parsed).map(([key, value]) => ({
-                      keyword: key.trim(),
-                      frequency: typeof value === 'number' ? value : 1
-                    }));
+          // If no keywords found in model_response, try other fields
+          if (groundTruth.length === 0) {
+            // Try different potential field names for keywords
+            const keywordFields = [
+              'keywords', 'ground_truth', 'groundtruth', 
+              'ground_truth_keywords', 'actual_keywords', 'expected_keywords',
+              'manual_keywords', 'annotated_keywords'
+            ];
+            
+            // Check each possible field name
+            for (const field of keywordFields) {
+              if (row[field] && typeof row[field] === 'string') {
+                try {
+                  // Try to parse as JSON
+                  if (row[field].trim().startsWith('[') || row[field].trim().startsWith('{')) {
+                    const parsed = JSON.parse(row[field]);
+                    
+                    if (Array.isArray(parsed)) {
+                      // Handle array of strings or objects
+                      groundTruth = parsed.map(item => {
+                        if (typeof item === 'string') {
+                          return { keyword: item.trim(), frequency: 1 };
+                        } else if (item && typeof item === 'object') {
+                          return {
+                            keyword: (item.keyword || item.term || item.text || "").trim(),
+                            frequency: item.frequency || item.count || item.weight || 1
+                          };
+                        }
+                        return null;
+                      }).filter(Boolean);
+                      break;
+                    } else if (parsed && typeof parsed === 'object') {
+                      // Handle object with key-value pairs
+                      groundTruth = Object.entries(parsed).map(([key, value]) => ({
+                        keyword: key.trim(),
+                        frequency: typeof value === 'number' ? value : 1
+                      }));
+                      break;
+                    }
+                  } else {
+                    // Try parsing as comma-separated list
+                    groundTruth = row[field].split(',').map((keyword: string) => {
+                      const [term, countStr] = keyword.split(':');
+                      return {
+                        keyword: term.trim(),
+                        frequency: parseInt(countStr?.trim() || "1", 10) || 1
+                      };
+                    }).filter((item: any) => item.keyword);
                     break;
                   }
-                } else {
-                  // Try parsing as comma-separated list
-                  groundTruth = row[field].split(',').map((keyword: string) => {
-                    const [term, countStr] = keyword.split(':');
-                    return {
-                      keyword: term.trim(),
-                      frequency: parseInt(countStr?.trim() || "1", 10) || 1
-                    };
-                  }).filter((item: any) => item.keyword);
-                  break;
+                } catch (error) {
+                  console.warn(`Failed to parse ${field} for row ${index}:`, error);
+                  // Continue to the next field if parsing fails
                 }
-              } catch (error) {
-                console.warn(`Failed to parse ${field} for row ${index}:`, error);
-                // Continue to the next field if parsing fails
               }
             }
           }
           
-          // If no keywords found through the fields above, try one more general approach
+          // If still no keywords found, extract some from the description for testing
           if (groundTruth.length === 0) {
-            // Look for any field that might contain 'keyword' in its name
-            const keywordField = Object.keys(row).find(key => 
-              key.toLowerCase().includes('keyword') || 
-              key.toLowerCase().includes('tag') ||
-              key.toLowerCase().includes('skill')
-            );
-            
-            if (keywordField && typeof row[keywordField] === 'string') {
-              try {
-                groundTruth = row[keywordField].split(',').map((keyword: string) => ({
-                  keyword: keyword.trim(),
-                  frequency: 1
-                })).filter((item: any) => item.keyword);
-              } catch (error) {
-                console.warn(`Failed to parse ${keywordField} for row ${index}:`, error);
-              }
-            }
-          }
-
-          // Final fallback - if we still have no keywords, log a warning
-          if (groundTruth.length === 0) {
-            console.warn(`No ground truth keywords found for row ${index}. Available fields:`, Object.keys(row));
+            console.warn(`No ground truth keywords found for row ${index}. Creating fallback keywords.`);
             
             // For testing, create a minimal set of dummy keywords from the description
-            // This is just for testing and should be removed in production
             const words = description.split(/\s+/).filter(word => 
               word.length > 4 && !/^\d+$/.test(word) && !['the', 'this', 'that', 'with', 'from', 'your'].includes(word.toLowerCase())
             ).slice(0, 5);
@@ -164,7 +231,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
           return {
             id,
             description,
-            groundTruth
+            groundTruth: groundTruth.filter(kw => kw && kw.keyword && kw.keyword.trim() !== "")
           };
         })
         .filter(Boolean); // Remove null items
