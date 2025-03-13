@@ -27,22 +27,71 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({
     }
 
     return results.data.map((row: any, index) => {
-      // Extract ground truth keywords from the CSV
-      // Assuming format: keyword1:frequency,keyword2:frequency
-      const groundTruthStr = row.groundTruth || "";
-      const groundTruth = groundTruthStr.split(',')
-        .map(item => {
-          const [keyword, frequency] = item.split(':');
-          return {
-            keyword: keyword?.trim() || "",
-            frequency: parseInt(frequency?.trim() || "1", 10) || 1
-          };
-        })
-        .filter(item => item.keyword); // Remove empty items
+      let description = "";
+      let groundTruth: any[] = [];
+      
+      // Handle the new CSV format with job_description and position_title
+      if (row.job_description || row.description) {
+        description = row.job_description || row.description || "";
+        
+        // If there's a position_title, prepend it to the description
+        if (row.position_title) {
+          description = `${row.position_title}: ${description}`;
+        }
+      } else if (typeof row.description === 'string') {
+        description = row.description;
+      }
+      
+      // Try to parse model_response as JSON if it exists
+      if (row.model_response && typeof row.model_response === 'string') {
+        try {
+          // Attempt to parse the model_response as JSON
+          const modelResponse = JSON.parse(row.model_response);
+          
+          // If it's an object with keywords, use those as groundTruth
+          if (modelResponse && Array.isArray(modelResponse.keywords)) {
+            groundTruth = modelResponse.keywords.map((kw: any) => ({
+              keyword: kw.term || kw.keyword || "",
+              frequency: kw.count || kw.frequency || 1
+            }));
+          } else if (modelResponse && typeof modelResponse === 'object') {
+            // If it's just an object, create a simple array of keyword items
+            groundTruth = Object.entries(modelResponse).map(([key, value]) => ({
+              keyword: key,
+              frequency: typeof value === 'number' ? value : 1
+            }));
+          }
+        } catch (error) {
+          console.warn("Could not parse model_response as JSON", error);
+          // If parsing fails, try the original CSV format with groundTruth as a string
+          const groundTruthStr = row.groundTruth || "";
+          groundTruth = groundTruthStr.split(',')
+            .map((item: string) => {
+              const [keyword, frequency] = item.split(':');
+              return {
+                keyword: keyword?.trim() || "",
+                frequency: parseInt(frequency?.trim() || "1", 10) || 1
+              };
+            })
+            .filter((item: any) => item.keyword);
+        }
+      } else if (row.groundTruth) {
+        // Fall back to original format if model_response isn't available
+        const groundTruthStr = row.groundTruth || "";
+        groundTruth = groundTruthStr.split(',')
+          .map((item: string) => {
+            const [keyword, frequency] = item.split(':');
+            return {
+              keyword: keyword?.trim() || "",
+              frequency: parseInt(frequency?.trim() || "1", 10) || 1
+            };
+          })
+          .filter((item: any) => item.keyword);
+      }
 
       return {
-        id: row.id || `item-${index}`,
-        description: row.description || "",
+        id: row.company_name || row.id || `item-${index}`,
+        description,
         groundTruth
       };
     });
