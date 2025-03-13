@@ -85,8 +85,15 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ results }) => {
   ];
 
   const renderKeywordList = (keywords: KeywordItem[]) => {
-    // Ensure keywords is an array
-    const safeKeywords = Array.isArray(keywords) ? keywords : [];
+    // Ensure keywords is an array and filter out invalid items
+    const safeKeywords = Array.isArray(keywords) 
+      ? keywords.filter(k => 
+          k && 
+          typeof k === 'object' && 
+          typeof k.keyword === 'string' &&
+          (typeof k.frequency === 'number' || k.frequency === undefined)
+        )
+      : [];
     
     if (safeKeywords.length === 0) {
       return (
@@ -113,7 +120,7 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ results }) => {
   };
 
   // Filter out any invalid perItem entries with comprehensive validation
-  const validPerItemResults = results.perItem.filter(item => 
+  const validPerItemResults = (results.perItem || []).filter(item => 
     item && 
     typeof item === 'object' &&
     (item.id !== undefined && item.id !== null) &&
@@ -207,11 +214,11 @@ const BaselineComparison: React.FC<BaselineComparisonProps> = ({ results }) => {
               <Card className="p-4 md:p-6 cyber-card">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({item.extractedKeywords?.length || 0})</h4>
+                    <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({Array.isArray(item.extractedKeywords) ? item.extractedKeywords.length : 0})</h4>
                     {renderKeywordList(item.extractedKeywords || [])}
                   </div>
                   <div>
-                    <h4 className="text-sm font-medium mb-2">Baseline Keywords ({item.baselineKeywords?.length || 0})</h4>
+                    <h4 className="text-sm font-medium mb-2">Baseline Keywords ({Array.isArray(item.baselineKeywords) ? item.baselineKeywords.length : 0})</h4>
                     {renderKeywordList(item.baselineKeywords || [])}
                   </div>
                 </div>

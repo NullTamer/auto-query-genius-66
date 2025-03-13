@@ -43,11 +43,15 @@ const DatasetPreview: React.FC<DatasetPreviewProps> = ({
     );
   }
 
-  // Safely get the first few items to display
+  // Safely get the first few items to display with additional validation
   const previewItems = dataItems.slice(0, 2).map((item) => ({
     id: item.id || "",
     description: typeof item.description === 'string' ? item.description : '',
-    groundTruth: Array.isArray(item.groundTruth) ? item.groundTruth : []
+    groundTruth: Array.isArray(item.groundTruth) ? item.groundTruth.filter(kw => 
+      kw && typeof kw === 'object' && 
+      typeof kw.keyword === 'string' && 
+      (typeof kw.frequency === 'number' || kw.frequency === undefined)
+    ) : []
   }));
 
   return (
@@ -83,10 +87,10 @@ const DatasetPreview: React.FC<DatasetPreviewProps> = ({
         {previewItems.map((item, index) => (
           <Card key={index} className="p-3 text-xs bg-background/50 border-primary/20">
             <p className="font-medium mb-1">
-              Item {index + 1}: {item.groundTruth.length} keywords
+              Item {index + 1}: {(item.groundTruth && item.groundTruth.length) || 0} keywords
             </p>
             <p className="line-clamp-2 text-muted-foreground">
-              {item.description.substring(0, 150)}...
+              {(item.description && item.description.substring(0, 150) + '...') || 'No description available'}
             </p>
           </Card>
         ))}
