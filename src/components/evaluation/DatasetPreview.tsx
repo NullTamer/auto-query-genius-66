@@ -16,16 +16,37 @@ const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   isProcessing,
   onRunEvaluation
 }) => {
-  if (!Array.isArray(dataItems) || dataItems.length === 0) {
-    return null;
+  // Check if dataItems is a valid array with items
+  const validDataItems = Array.isArray(dataItems) && dataItems.length > 0;
+  
+  if (!validDataItems) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-medium">Dataset Preview</h3>
+            <p className="text-sm text-muted-foreground">
+              No evaluation items loaded yet
+            </p>
+          </div>
+          <Button 
+            onClick={onRunEvaluation} 
+            disabled={true}
+            className="cyber-card"
+            variant="outline"
+          >
+            <Play className="mr-2 h-4 w-4" />
+            Run Evaluation
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   // Safely get the first few items to display
   const previewItems = dataItems.slice(0, 2).map((item) => ({
-    ...item,
-    // Ensure we have a valid description (defensive coding)
+    id: item.id || "",
     description: typeof item.description === 'string' ? item.description : '',
-    // Ensure we have valid groundTruth
     groundTruth: Array.isArray(item.groundTruth) ? item.groundTruth : []
   }));
 

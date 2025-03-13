@@ -21,8 +21,14 @@ interface EvaluationResultsProps {
 }
 
 const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
-  // Safeguard against invalid results data
-  if (!results || !results.overall || !results.perItem || !Array.isArray(results.perItem)) {
+  // Comprehensive validation of results data
+  const isValidResults = results && 
+    typeof results === 'object' &&
+    results.overall && 
+    typeof results.overall === 'object' &&
+    Array.isArray(results.perItem);
+
+  if (!isValidResults) {
     return (
       <Card className="p-4 md:p-6 cyber-card">
         <p className="text-center text-muted-foreground">
@@ -32,27 +38,37 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
     );
   }
 
+  // Ensure baseline data exists with fallbacks
+  const baseline = results.baseline || { precision: 0, recall: 0, f1Score: 0 };
+
+  // Prepare chart data with safe values
   const metricsData = [
     {
       name: "Precision",
       AI: parseFloat(((results.overall.precision || 0) * 100).toFixed(2)),
-      Baseline: parseFloat(((results.baseline?.precision || 0) * 100).toFixed(2)),
+      Baseline: parseFloat(((baseline.precision || 0) * 100).toFixed(2)),
     },
     {
       name: "Recall",
       AI: parseFloat(((results.overall.recall || 0) * 100).toFixed(2)),
-      Baseline: parseFloat(((results.baseline?.recall || 0) * 100).toFixed(2)),
+      Baseline: parseFloat(((baseline.recall || 0) * 100).toFixed(2)),
     },
     {
       name: "F1 Score",
       AI: parseFloat(((results.overall.f1Score || 0) * 100).toFixed(2)),
-      Baseline: parseFloat(((results.baseline?.f1Score || 0) * 100).toFixed(2)),
+      Baseline: parseFloat(((baseline.f1Score || 0) * 100).toFixed(2)),
     },
   ];
 
   const renderKeywordList = (keywords: KeywordItem[]) => {
     // Ensure keywords is an array
     const safeKeywords = Array.isArray(keywords) ? keywords : [];
+    
+    if (safeKeywords.length === 0) {
+      return (
+        <p className="text-xs text-muted-foreground p-2">No keywords available</p>
+      );
+    }
     
     return (
       <ScrollArea className="h-[200px]">
@@ -63,8 +79,8 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
               variant="outline"
               className="px-3 py-1 text-sm flex items-center gap-2"
             >
-              {keyword.keyword}
-              <span className="text-xs opacity-50">({keyword.frequency})</span>
+              {keyword.keyword || ""}
+              <span className="text-xs opacity-50">({keyword.frequency || 0})</span>
             </Badge>
           ))}
         </div>
@@ -72,10 +88,57 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
     );
   };
 
-  // Filter out any invalid perItem entries
+  // Filter out any invalid perItem entries with comprehensive validation
   const validPerItemResults = results.perItem.filter(item => 
-    item && item.metrics && Array.isArray(item.groundTruth) && Array.isArray(item.extractedKeywords)
+    item && 
+    typeof item === 'object' &&
+    (item.id !== undefined && item.id !== null) &&
+    item.metrics && 
+    typeof item.metrics === 'object' &&
+    Array.isArray(item.groundTruth) && 
+    Array.isArray(item.extractedKeywords)
   );
+
+  if (validPerItemResults.length === 0) {
+    return (
+      <Card className="p-4 md:p-6 cyber-card">
+        <h3 className="text-lg font-medium mb-4">Overall Performance Metrics</h3>
+        
+        <div className="h-[300px] mb-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={metricsData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis unit="%" domain={[0, 100]} />
+              <Tooltip formatter={(value) => [`${value}%`, '']} />
+              <Legend />
+              <Bar dataKey="AI" fill="#22c55e" name="AI Algorithm" />
+              <Bar dataKey="Baseline" fill="#3b82f6" name="Baseline" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
+          <div className="p-4 bg-primary/10 rounded-md">
+            <p className="text-sm text-muted-foreground mb-1">Precision</p>
+            <p className="text-2xl font-semibold">{((results.overall.precision || 0) * 100).toFixed(1)}%</p>
+          </div>
+          <div className="p-4 bg-primary/10 rounded-md">
+            <p className="text-sm text-muted-foreground mb-1">Recall</p>
+            <p className="text-2xl font-semibold">{((results.overall.recall || 0) * 100).toFixed(1)}%</p>
+          </div>
+          <div className="p-4 bg-primary/10 rounded-md">
+            <p className="text-sm text-muted-foreground mb-1">F1 Score</p>
+            <p className="text-2xl font-semibold">{((results.overall.f1Score || 0) * 100).toFixed(1)}%</p>
+          </div>
+        </div>
+        
+        <p className="mt-4 text-center text-muted-foreground">
+          No valid per-item results available for detailed analysis
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -112,50 +175,48 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
         </div>
       </Card>
 
-      {validPerItemResults.length > 0 && (
-        <Tabs defaultValue={validPerItemResults[0]?.id?.toString() || "item0"}>
-          <h3 className="text-lg font-medium mb-4">Per-Item Results</h3>
-          <TabsList className="mb-4 overflow-x-auto flex w-full">
-            {validPerItemResults.map((item, index) => (
-              <TabsTrigger key={index} value={item.id?.toString() || `item${index}`}>
-                Item {index + 1}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
+      <Tabs defaultValue={validPerItemResults[0]?.id?.toString() || "item0"}>
+        <h3 className="text-lg font-medium mb-4">Per-Item Results</h3>
+        <TabsList className="mb-4 overflow-x-auto flex w-full">
           {validPerItemResults.map((item, index) => (
-            <TabsContent key={index} value={item.id?.toString() || `item${index}`}>
-              <Card className="p-4 md:p-6 cyber-card">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 text-center">
-                  <div className="p-3 bg-primary/10 rounded-md">
-                    <p className="text-sm text-muted-foreground mb-1">Precision</p>
-                    <p className="text-xl font-semibold">{((item.metrics.precision || 0) * 100).toFixed(1)}%</p>
-                  </div>
-                  <div className="p-3 bg-primary/10 rounded-md">
-                    <p className="text-sm text-muted-foreground mb-1">Recall</p>
-                    <p className="text-xl font-semibold">{((item.metrics.recall || 0) * 100).toFixed(1)}%</p>
-                  </div>
-                  <div className="p-3 bg-primary/10 rounded-md">
-                    <p className="text-sm text-muted-foreground mb-1">F1 Score</p>
-                    <p className="text-xl font-semibold">{((item.metrics.f1Score || 0) * 100).toFixed(1)}%</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Ground Truth Keywords ({item.groundTruth.length})</h4>
-                    {renderKeywordList(item.groundTruth)}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({item.extractedKeywords.length})</h4>
-                    {renderKeywordList(item.extractedKeywords)}
-                  </div>
-                </div>
-              </Card>
-            </TabsContent>
+            <TabsTrigger key={index} value={item.id?.toString() || `item${index}`}>
+              Item {index + 1}
+            </TabsTrigger>
           ))}
-        </Tabs>
-      )}
+        </TabsList>
+
+        {validPerItemResults.map((item, index) => (
+          <TabsContent key={index} value={item.id?.toString() || `item${index}`}>
+            <Card className="p-4 md:p-6 cyber-card">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 text-center">
+                <div className="p-3 bg-primary/10 rounded-md">
+                  <p className="text-sm text-muted-foreground mb-1">Precision</p>
+                  <p className="text-xl font-semibold">{((item.metrics.precision || 0) * 100).toFixed(1)}%</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-md">
+                  <p className="text-sm text-muted-foreground mb-1">Recall</p>
+                  <p className="text-xl font-semibold">{((item.metrics.recall || 0) * 100).toFixed(1)}%</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-md">
+                  <p className="text-sm text-muted-foreground mb-1">F1 Score</p>
+                  <p className="text-xl font-semibold">{((item.metrics.f1Score || 0) * 100).toFixed(1)}%</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Ground Truth Keywords ({item.groundTruth.length})</h4>
+                  {renderKeywordList(item.groundTruth)}
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium mb-2">AI Extracted Keywords ({item.extractedKeywords.length})</h4>
+                  {renderKeywordList(item.extractedKeywords)}
+                </div>
+              </div>
+            </Card>
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 };
