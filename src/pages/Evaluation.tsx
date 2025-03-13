@@ -8,12 +8,14 @@ import EvaluationResults from "@/components/evaluation/EvaluationResults";
 import BaselineComparison from "@/components/evaluation/BaselineComparison";
 import { EvaluationDataItem, EvaluationResult } from "@/components/evaluation/types";
 import { toast } from "sonner";
+import ErrorDisplay from "@/components/evaluation/components/ErrorDisplay";
 
 const Evaluation = () => {
   const [evaluationData, setEvaluationData] = useState<EvaluationDataItem[]>([]);
   const [results, setResults] = useState<EvaluationResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("upload");
+  const [error, setError] = useState<string | null>(null);
 
   // Log state changes for debugging
   useEffect(() => {
@@ -50,6 +52,7 @@ const Evaluation = () => {
       // If any critical data is missing, generate fallback values
       if (!overallValid || !baselineValid || !itemsValid) {
         console.warn("Invalid results data detected, generating fallback values");
+        setError("Some metrics could not be calculated correctly. Using fallback values for visualization.");
         
         // Create fallback values to ensure charts don't break
         const fallbackResults: EvaluationResult = {
@@ -83,6 +86,8 @@ const Evaluation = () => {
         
         // Use the fallback values
         setResults(fallbackResults);
+      } else {
+        setError(null);
       }
     }
   }, [results]);
@@ -90,6 +95,8 @@ const Evaluation = () => {
   // Handle data loading (from file upload)
   const handleDataLoaded = (newData: EvaluationDataItem[]) => {
     console.log("Data loaded:", newData.length);
+    setError(null);
+    
     if (Array.isArray(newData) && newData.length > 0) {
       // Reset results when new data is loaded
       setResults(null);
@@ -118,9 +125,11 @@ const Evaluation = () => {
         setEvaluationData(validatedData);
         toast.success(`Loaded ${validatedData.length} valid evaluation items`);
       } else {
+        setError("No valid data items found in the uploaded file");
         toast.error("No valid data items found in the uploaded file");
       }
     } else {
+      setError("No valid data items found in the uploaded file");
       toast.error("No valid data items found in the uploaded file");
     }
   };
@@ -133,6 +142,8 @@ const Evaluation = () => {
       itemCount: newResults?.perItem?.length || 0
     });
 
+    setError(null);
+    
     if (newResults && typeof newResults === 'object') {
       // Ensure we have a valid results object with proper fallbacks
       const validResults: EvaluationResult = {
@@ -175,11 +186,13 @@ const Evaluation = () => {
         setActiveTab("results");
         toast.success("Evaluation completed successfully");
       } else {
+        setError("Evaluation completed but no valid results were produced");
         toast.error("Evaluation completed but no valid results were produced");
       }
     } else {
       console.error("Invalid results received:", newResults);
       setIsProcessing(false);
+      setError("Failed to process evaluation results");
       toast.error("Failed to process evaluation results");
       
       // Create fallback demo data for testing
@@ -227,7 +240,9 @@ const Evaluation = () => {
             Upload a dataset (JSON or CSV), run the evaluation, and compare results with baseline methods.
           </p>
           
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <ErrorDisplay error={error} />
+          
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mt-4">
             <TabsList className="grid grid-cols-3 mb-6">
               <TabsTrigger value="upload">Upload Dataset</TabsTrigger>
               <TabsTrigger value="results" disabled={!results}>Results</TabsTrigger>
@@ -240,6 +255,7 @@ const Evaluation = () => {
                 onProcessingStart={() => {
                   console.log("Processing started");
                   setIsProcessing(true);
+                  setError(null);
                 }}
                 onProcessingComplete={handleResultsComplete}
                 isProcessing={isProcessing}
