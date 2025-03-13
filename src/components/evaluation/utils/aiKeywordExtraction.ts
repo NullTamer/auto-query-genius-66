@@ -22,8 +22,19 @@ export const extractKeywordsWithAI = async (description: string): Promise<Keywor
     if (error) {
       console.error('Error invoking edge function:', error);
       
+      // Check for specific network errors
+      const errorMessage = error.message || '';
+      
+      // Network errors to look for
+      if (errorMessage.includes('ERR_BLOCKED_BY_CLIENT')) {
+        const networkError = 'Network request blocked by browser. Try disabling content blockers or privacy extensions.';
+        console.error(networkError);
+        toast.error(networkError, { duration: 8000 });
+        throw new Error(networkError);
+      }
+      
       // Check if it's a quota error (429)
-      if (error.message && error.message.includes('429')) {
+      if (errorMessage.includes('429')) {
         toast.error('API quota exceeded. Using baseline algorithm as fallback.', { 
           duration: 5000 
         });
@@ -53,7 +64,21 @@ export const extractKeywordsWithAI = async (description: string): Promise<Keywor
     return keywords;
   } catch (error) {
     console.error('Error extracting keywords with AI:', error);
-    // Fallback to baseline algorithm on error
+
+    // Check for network errors
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Special handling for network errors
+    if (errorMessage.includes('network') || 
+        errorMessage.includes('ERR_BLOCKED_BY_CLIENT') ||
+        errorMessage.includes('fetch') ||
+        errorMessage.includes('blocked')) {
+      
+      // Don't hide network errors - propagate them up so the UI can show appropriate help
+      throw new Error(`Network error: ${errorMessage}`);
+    }
+    
+    // For other errors, fallback to baseline algorithm
     console.log('Using baseline algorithm as fallback');
     return extractBaselineKeywords(description);
   }

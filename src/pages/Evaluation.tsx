@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
@@ -17,7 +16,6 @@ const Evaluation = () => {
   const [activeTab, setActiveTab] = useState("upload");
   const [error, setError] = useState<string | null>(null);
 
-  // Log state changes for debugging
   useEffect(() => {
     console.log("Evaluation data updated:", {
       itemCount: evaluationData.length,
@@ -32,9 +30,7 @@ const Evaluation = () => {
       itemCount: results?.perItem?.length || 0
     });
     
-    // If we received results, ensure metrics values are valid numbers
     if (results) {
-      // Check if metrics are valid and non-zero
       const checkMetrics = (metrics: any) => {
         return metrics && 
                typeof metrics.precision === 'number' && 
@@ -49,12 +45,20 @@ const Evaluation = () => {
       
       console.log("Results validation:", { overallValid, baselineValid, itemsValid });
       
-      // If any critical data is missing, generate fallback values
       if (!overallValid || !baselineValid || !itemsValid) {
         console.warn("Invalid results data detected, generating fallback values");
-        setError("Some metrics could not be calculated correctly. Using fallback values for visualization.");
         
-        // Create fallback values to ensure charts don't break
+        const networkError = results.error && 
+          (results.error.includes("network") || 
+           results.error.includes("blocked") || 
+           results.error.includes("ERR_BLOCKED_BY_CLIENT"));
+        
+        if (networkError) {
+          setError("Network error detected. Some resources were blocked by your browser or network. Try disabling content blockers or using a different browser.");
+        } else {
+          setError("Some metrics could not be calculated correctly. Using fallback values for visualization.");
+        }
+        
         const fallbackResults: EvaluationResult = {
           overall: {
             precision: 0.35,
@@ -80,11 +84,12 @@ const Evaluation = () => {
                 metrics: { precision: 0.35, recall: 0.42, f1Score: 0.38, averageRankCorrelation: 0.4 },
                 groundTruth: [{ keyword: "sample", frequency: 1 }],
                 extractedKeywords: [{ keyword: "sample", frequency: 1 }],
-                baselineKeywords: [{ keyword: "sample", frequency: 1 }]
-              }]
+                baselineKeywords: [{ keyword: "sample", frequency: 1 }],
+                error: results.error || null
+              }],
+          error: results.error || null
         };
         
-        // Use the fallback values
         setResults(fallbackResults);
       } else {
         setError(null);
@@ -92,16 +97,13 @@ const Evaluation = () => {
     }
   }, [results]);
 
-  // Handle data loading (from file upload)
   const handleDataLoaded = (newData: EvaluationDataItem[]) => {
     console.log("Data loaded:", newData.length);
     setError(null);
     
     if (Array.isArray(newData) && newData.length > 0) {
-      // Reset results when new data is loaded
       setResults(null);
       
-      // Validate the data before setting it
       const validatedData = newData
         .filter(item => 
           item && 
@@ -134,18 +136,17 @@ const Evaluation = () => {
     }
   };
 
-  // Update active tab when results become available
   const handleResultsComplete = (newResults: EvaluationResult) => {
     console.log("Processing complete, handling results:", {
       hasOverall: !!newResults?.overall,
       hasBaseline: !!newResults?.baseline,
-      itemCount: newResults?.perItem?.length || 0
+      itemCount: newResults?.perItem?.length || 0,
+      hasError: !!newResults?.error
     });
 
     setError(null);
     
     if (newResults && typeof newResults === 'object') {
-      // Ensure we have a valid results object with proper fallbacks
       const validResults: EvaluationResult = {
         overall: {
           precision: newResults.overall?.precision || 0.25, 
@@ -172,16 +173,24 @@ const Evaluation = () => {
                 },
                 groundTruth: Array.isArray(item.groundTruth) ? item.groundTruth : [],
                 extractedKeywords: Array.isArray(item.extractedKeywords) ? item.extractedKeywords : [],
-                baselineKeywords: Array.isArray(item.baselineKeywords) ? item.baselineKeywords : []
+                baselineKeywords: Array.isArray(item.baselineKeywords) ? item.baselineKeywords : [],
+                error: item.error || null
               }))
-          : []
+          : [],
+        error: newResults.error || null
       };
       
-      // Set the validated results
       setResults(validResults);
       setIsProcessing(false);
       
-      // Only switch to results tab if we have valid data
+      if (validResults.error && (
+          validResults.error.includes("network") || 
+          validResults.error.includes("blocked") ||
+          validResults.error.includes("ERR_BLOCKED_BY_CLIENT"))) {
+        setError(validResults.error);
+        toast.error("Network error: Some resources were blocked. Try disabling content blockers.");
+      }
+      
       if (validResults.perItem.length > 0) {
         setActiveTab("results");
         toast.success("Evaluation completed successfully");
@@ -195,7 +204,6 @@ const Evaluation = () => {
       setError("Failed to process evaluation results");
       toast.error("Failed to process evaluation results");
       
-      // Create fallback demo data for testing
       const demoResults: EvaluationResult = {
         overall: {
           precision: 0.35,
@@ -240,7 +248,10 @@ const Evaluation = () => {
             Upload a dataset (JSON or CSV), run the evaluation, and compare results with baseline methods.
           </p>
           
-          <ErrorDisplay error={error} />
+          <ErrorDisplay 
+            error={error} 
+            showNetworkTips={error ? error.includes("network") || error.includes("blocked") : false}
+          />
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full mt-4">
             <TabsList className="grid grid-cols-3 mb-6">
