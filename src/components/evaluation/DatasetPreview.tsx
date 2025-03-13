@@ -16,9 +16,18 @@ const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   isProcessing,
   onRunEvaluation
 }) => {
-  if (dataItems.length === 0) {
+  if (!Array.isArray(dataItems) || dataItems.length === 0) {
     return null;
   }
+
+  // Safely get the first few items to display
+  const previewItems = dataItems.slice(0, 2).map((item) => ({
+    ...item,
+    // Ensure we have a valid description (defensive coding)
+    description: typeof item.description === 'string' ? item.description : '',
+    // Ensure we have valid groundTruth
+    groundTruth: Array.isArray(item.groundTruth) ? item.groundTruth : []
+  }));
 
   return (
     <div className="space-y-4">
@@ -50,9 +59,11 @@ const DatasetPreview: React.FC<DatasetPreviewProps> = ({
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {dataItems.slice(0, 2).map((item, index) => (
+        {previewItems.map((item, index) => (
           <Card key={index} className="p-3 text-xs bg-background/50 border-primary/20">
-            <p className="font-medium mb-1">Item {index + 1}: {item.groundTruth.length} keywords</p>
+            <p className="font-medium mb-1">
+              Item {index + 1}: {item.groundTruth.length} keywords
+            </p>
             <p className="line-clamp-2 text-muted-foreground">
               {item.description.substring(0, 150)}...
             </p>
