@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import NavigationPane from "@/components/layout/NavigationPane";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,6 +7,7 @@ import EvaluationUploader from "@/components/evaluation/EvaluationUploader";
 import EvaluationResults from "@/components/evaluation/EvaluationResults";
 import BaselineComparison from "@/components/evaluation/BaselineComparison";
 import { EvaluationDataItem, EvaluationResult } from "@/components/evaluation/types";
+import { toast } from "sonner";
 
 const Evaluation = () => {
   const [evaluationData, setEvaluationData] = useState<EvaluationDataItem[]>([]);
@@ -14,23 +15,77 @@ const Evaluation = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("upload");
 
+  // Log state changes for debugging
+  useEffect(() => {
+    console.log("Evaluation data updated:", {
+      itemCount: evaluationData.length,
+      firstItem: evaluationData[0] || null
+    });
+  }, [evaluationData]);
+
+  useEffect(() => {
+    console.log("Results updated:", {
+      hasResults: !!results,
+      overall: results?.overall || null,
+      itemCount: results?.perItem?.length || 0
+    });
+  }, [results]);
+
+  // Handle data loading (from file upload)
+  const handleDataLoaded = (newData: EvaluationDataItem[]) => {
+    console.log("Data loaded:", newData.length);
+    if (Array.isArray(newData) && newData.length > 0) {
+      setEvaluationData(newData);
+      // Reset results when new data is loaded
+      setResults(null);
+    } else {
+      toast.error("No valid data items found in the uploaded file");
+    }
+  };
+
   // Update active tab when results become available
   const handleResultsComplete = (newResults: EvaluationResult) => {
+    console.log("Processing complete, handling results:", {
+      hasOverall: !!newResults?.overall,
+      hasBaseline: !!newResults?.baseline,
+      itemCount: newResults?.perItem?.length || 0
+    });
+
     if (newResults && typeof newResults === 'object') {
-      // Make sure we have a valid results object
-      const validResults = {
-        overall: newResults.overall || { precision: 0, recall: 0, f1Score: 0 },
-        baseline: newResults.baseline || { precision: 0, recall: 0, f1Score: 0 },
-        perItem: Array.isArray(newResults.perItem) ? newResults.perItem : []
+      // Ensure we have a valid results object with proper fallbacks
+      const validResults: EvaluationResult = {
+        overall: {
+          precision: newResults.overall?.precision || 0, 
+          recall: newResults.overall?.recall || 0, 
+          f1Score: newResults.overall?.f1Score || 0,
+          averageRankCorrelation: newResults.overall?.averageRankCorrelation || 0
+        },
+        baseline: {
+          precision: newResults.baseline?.precision || 0, 
+          recall: newResults.baseline?.recall || 0, 
+          f1Score: newResults.baseline?.f1Score || 0,
+          averageRankCorrelation: newResults.baseline?.averageRankCorrelation || 0
+        },
+        perItem: Array.isArray(newResults.perItem) 
+          ? newResults.perItem.filter(item => item && typeof item === 'object') 
+          : []
       };
       
       // Set the validated results
       setResults(validResults);
       setIsProcessing(false);
-      setActiveTab("results");
+      
+      // Only switch to results tab if we have valid data
+      if (validResults.perItem.length > 0) {
+        setActiveTab("results");
+        toast.success("Evaluation completed successfully");
+      } else {
+        toast.error("Evaluation completed but no valid results were produced");
+      }
     } else {
       console.error("Invalid results received:", newResults);
       setIsProcessing(false);
+      toast.error("Failed to process evaluation results");
     }
   };
 
@@ -57,8 +112,11 @@ const Evaluation = () => {
             
             <TabsContent value="upload">
               <EvaluationUploader 
-                onDataLoaded={setEvaluationData} 
-                onProcessingStart={() => setIsProcessing(true)}
+                onDataLoaded={handleDataLoaded} 
+                onProcessingStart={() => {
+                  console.log("Processing started");
+                  setIsProcessing(true);
+                }}
                 onProcessingComplete={handleResultsComplete}
                 isProcessing={isProcessing}
                 dataItems={evaluationData}
@@ -66,11 +124,23 @@ const Evaluation = () => {
             </TabsContent>
             
             <TabsContent value="results">
-              {results && <EvaluationResults results={results} />}
+              {results ? (
+                <EvaluationResults results={results} />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  No evaluation results available yet. Please upload a dataset and run evaluation.
+                </div>
+              )}
             </TabsContent>
             
             <TabsContent value="baseline">
-              {results && <BaselineComparison results={results} />}
+              {results ? (
+                <BaselineComparison results={results} />
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  No baseline comparison data available yet. Please upload a dataset and run evaluation.
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </Card>

@@ -55,25 +55,61 @@ const calculateMetrics = (
   extracted: KeywordItem[]
 ): MetricsResult => {
   try {
+    // Log inputs for debugging
+    console.log("Calculating metrics with:", { 
+      groundTruthCount: groundTruth?.length || 0, 
+      extractedCount: extracted?.length || 0,
+      groundTruthSample: groundTruth?.slice(0, 3) || [],
+      extractedSample: extracted?.slice(0, 3) || []
+    });
+    
     // Ensure both arrays are valid
     if (!Array.isArray(groundTruth) || !Array.isArray(extracted)) {
       console.warn("calculateMetrics received invalid arrays:", { groundTruth, extracted });
       return { precision: 0, recall: 0, f1Score: 0, averageRankCorrelation: 0 };
     }
     
+    // If either array is empty but not both, log a warning
+    if ((groundTruth.length === 0 || extracted.length === 0) && !(groundTruth.length === 0 && extracted.length === 0)) {
+      console.warn("One of the arrays is empty in calculateMetrics:", {
+        groundTruthLength: groundTruth.length,
+        extractedLength: extracted.length
+      });
+    }
+    
     // Filter out invalid items
-    const validGroundTruth = groundTruth.filter(item => item && typeof item === 'object' && typeof item.keyword === 'string');
-    const validExtracted = extracted.filter(item => item && typeof item === 'object' && typeof item.keyword === 'string');
+    const validGroundTruth = groundTruth
+      .filter(item => item && typeof item === 'object' && typeof item.keyword === 'string' && item.keyword.trim() !== '');
+    
+    const validExtracted = extracted
+      .filter(item => item && typeof item === 'object' && typeof item.keyword === 'string' && item.keyword.trim() !== '');
+
+    console.log("Valid items after filtering:", {
+      validGroundTruthCount: validGroundTruth.length,
+      validExtractedCount: validExtracted.length
+    });
 
     if (validGroundTruth.length === 0 && validExtracted.length === 0) {
+      console.warn("Both arrays are empty after validation");
       return { precision: 0, recall: 0, f1Score: 0, averageRankCorrelation: 0 };
     }
 
-    const groundTruthSet = new Set(validGroundTruth.map(item => item.keyword.toLowerCase()));
-    const extractedSet = new Set(validExtracted.map(item => item.keyword.toLowerCase()));
+    // Convert to lowercase sets for comparison
+    const groundTruthSet = new Set(validGroundTruth.map(item => item.keyword.toLowerCase().trim()));
+    const extractedSet = new Set(validExtracted.map(item => item.keyword.toLowerCase().trim()));
 
-    // Find true positives
+    console.log("Sets for comparison:", {
+      groundTruthSetSize: groundTruthSet.size,
+      extractedSetSize: extractedSet.size
+    });
+
+    // Find true positives (intersection)
     const truePositives = [...extractedSet].filter(keyword => groundTruthSet.has(keyword));
+    
+    console.log("True positives:", {
+      count: truePositives.length,
+      sample: truePositives.slice(0, 3)
+    });
     
     // Calculate metrics
     const precision = extractedSet.size > 0 ? truePositives.length / extractedSet.size : 0;
@@ -81,6 +117,8 @@ const calculateMetrics = (
     const f1Score = precision + recall > 0 
       ? 2 * (precision * recall) / (precision + recall) 
       : 0;
+
+    console.log("Calculated metrics:", { precision, recall, f1Score });
 
     // Simplified rank correlation (this could be improved with Spearman's rho)
     const averageRankCorrelation = 0; // Placeholder for a more complex implementation
@@ -99,6 +137,8 @@ const extractKeywordsWithAI = async (description: string): Promise<KeywordItem[]
       console.warn("extractKeywordsWithAI received invalid description:", description);
       return [];
     }
+
+    console.log("Calling edge function with description length:", description.length);
 
     // Call our actual Supabase Edge Function
     const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
@@ -120,15 +160,23 @@ const extractKeywordsWithAI = async (description: string): Promise<KeywordItem[]
       throw error;
     }
 
+    console.log("Edge function response:", data);
+
     if (!data || !data.success || !Array.isArray(data.keywords)) {
       console.warn("Invalid response from edge function:", data);
       throw new Error(data?.error || 'Failed to extract keywords');
     }
 
     // Filter and validate keywords
-    return (data.keywords || []).filter(kw => 
-      kw && typeof kw === 'object' && typeof kw.keyword === 'string'
-    );
+    const keywords = (data.keywords || [])
+      .filter(kw => kw && typeof kw === 'object' && typeof kw.keyword === 'string' && kw.keyword.trim() !== '')
+      .map(kw => ({
+        keyword: kw.keyword.trim(),
+        frequency: typeof kw.frequency === 'number' ? kw.frequency : 1
+      }));
+
+    console.log("Extracted keywords with AI:", keywords.length);
+    return keywords;
   } catch (error) {
     console.error('Error extracting keywords with AI:', error);
     // Fallback to baseline algorithm on error
@@ -141,18 +189,19 @@ const extractKeywordsWithAI = async (description: string): Promise<KeywordItem[]
 export const runEvaluation = async (
   dataItems: EvaluationDataItem[]
 ): Promise<EvaluationResult> => {
+  console.log("Starting evaluation with", dataItems.length, "items");
+  
   // Validate input
   if (!Array.isArray(dataItems) || dataItems.length === 0) {
+    console.error("No valid data items to evaluate:", dataItems);
     throw new Error("No valid data items to evaluate");
   }
-  
-  console.log("Starting evaluation with", dataItems.length, "items");
   
   // Track if we're using fallback for all items
   let usingFallback = false;
   
   // Check if items exceed a reasonable limit to prevent quota issues
-  if (dataItems.length > 50) {
+  if (dataItems.length > 20) {
     toast.warning('Large dataset detected. Using baseline algorithm for evaluation to prevent API quota issues.', {
       duration: 7000
     });
@@ -163,10 +212,28 @@ export const runEvaluation = async (
   const processedItems = await Promise.all(
     dataItems.map(async (item, index) => {
       try {
+        console.log(`Processing item ${index + 1}/${dataItems.length}:`, {
+          id: item?.id,
+          descriptionLength: item?.description?.length,
+          groundTruthCount: item?.groundTruth?.length
+        });
+
         if (!item || typeof item !== 'object' || !item.description) {
           console.warn("Invalid item at index", index, item);
           throw new Error("Invalid item data");
         }
+
+        // Validate ground truth data
+        const validGroundTruth = Array.isArray(item.groundTruth) 
+          ? item.groundTruth.filter(kw => 
+              kw && 
+              typeof kw === 'object' && 
+              typeof kw.keyword === 'string' &&
+              kw.keyword.trim() !== ''
+            )
+          : [];
+
+        console.log(`Item ${index} has ${validGroundTruth.length} valid ground truth keywords`);
 
         // Use fallback for large datasets or every 3rd item to conserve quota
         const useBaselineForThis = usingFallback || index % 3 !== 0;
@@ -179,16 +246,19 @@ export const runEvaluation = async (
         // Get keywords from baseline algorithm (always)
         const baselineKeywords = extractBaselineKeywords(item.description);
 
-        // Validate ground truth data
-        const validGroundTruth = Array.isArray(item.groundTruth) 
-          ? item.groundTruth.filter(kw => kw && typeof kw === 'object' && typeof kw.keyword === 'string')
-          : [];
+        console.log(`Item ${index} extracted keywords:`, {
+          aiKeywords: extractedKeywords.length,
+          baselineKeywords: baselineKeywords.length
+        });
 
         // Calculate metrics
         const metrics = calculateMetrics(validGroundTruth, extractedKeywords);
         const baselineMetrics = calculateMetrics(validGroundTruth, baselineKeywords);
 
-        console.log(`Processed item ${index + 1}/${dataItems.length} (id: ${item.id})`);
+        console.log(`Item ${index} metrics:`, {
+          ai: metrics,
+          baseline: baselineMetrics
+        });
 
         return {
           id: item.id || `item-${index}`,
@@ -222,9 +292,11 @@ export const runEvaluation = async (
 
   // Filter out items that failed to process
   const validProcessedItems = processedItems.filter(item => item && typeof item === 'object');
+  console.log(`Processed ${validProcessedItems.length} valid items out of ${dataItems.length} total`);
 
   // If no valid items, throw error
   if (validProcessedItems.length === 0) {
+    console.error("No items could be successfully evaluated");
     throw new Error("No items could be successfully evaluated");
   }
 
@@ -239,21 +311,29 @@ export const runEvaluation = async (
     });
   }
 
-  // Calculate overall metrics
-  const overallPrecision = validProcessedItems.reduce((sum, item) => sum + (item.metrics?.precision || 0), 0) / validProcessedItems.length;
-  const overallRecall = validProcessedItems.reduce((sum, item) => sum + (item.metrics?.recall || 0), 0) / validProcessedItems.length;
-  const overallF1 = validProcessedItems.reduce((sum, item) => sum + (item.metrics?.f1Score || 0), 0) / validProcessedItems.length;
+  // Calculate overall metrics with more explicit checks
+  const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
+  const avg = (arr: number[]) => arr.length > 0 ? sum(arr) / arr.length : 0;
+  
+  const precisions = validProcessedItems.map(item => item.metrics?.precision || 0);
+  const recalls = validProcessedItems.map(item => item.metrics?.recall || 0);
+  const f1Scores = validProcessedItems.map(item => item.metrics?.f1Score || 0);
+  
+  const baselinePrecisions = validProcessedItems.map(item => item.baselineMetrics?.precision || 0);
+  const baselineRecalls = validProcessedItems.map(item => item.baselineMetrics?.recall || 0);
+  const baselineF1Scores = validProcessedItems.map(item => item.baselineMetrics?.f1Score || 0);
+  
+  const overallPrecision = avg(precisions);
+  const overallRecall = avg(recalls);
+  const overallF1 = avg(f1Scores);
+  
+  const baselinePrecision = avg(baselinePrecisions);
+  const baselineRecall = avg(baselineRecalls);
+  const baselineF1 = avg(baselineF1Scores);
 
-  // Calculate overall baseline metrics
-  const baselinePrecision = validProcessedItems.reduce((sum, item) => sum + (item.baselineMetrics?.precision || 0), 0) / validProcessedItems.length;
-  const baselineRecall = validProcessedItems.reduce((sum, item) => sum + (item.baselineMetrics?.recall || 0), 0) / validProcessedItems.length;
-  const baselineF1 = validProcessedItems.reduce((sum, item) => sum + (item.baselineMetrics?.f1Score || 0), 0) / validProcessedItems.length;
-
-  console.log("Evaluation complete:", {
-    itemsProcessed: validProcessedItems.length,
-    overallPrecision,
-    overallRecall,
-    overallF1
+  console.log("Overall metrics:", {
+    ai: { precision: overallPrecision, recall: overallRecall, f1Score: overallF1 },
+    baseline: { precision: baselinePrecision, recall: baselineRecall, f1Score: baselineF1 }
   });
 
   // Return the final results
