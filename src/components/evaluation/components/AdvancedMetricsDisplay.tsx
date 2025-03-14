@@ -20,7 +20,8 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ErrorBar
+  ErrorBar,
+  TooltipProps
 } from "recharts";
 
 interface AdvancedMetricsDisplayProps {
@@ -62,6 +63,23 @@ const AdvancedMetricsDisplay: React.FC<AdvancedMetricsDisplayProps> = ({ advance
       max: advancedMetrics.max.f1Score * 100,
     },
   ];
+  
+  // Custom tooltip formatter function with proper type handling
+  const customTooltipFormatter = (value: any, name: any) => {
+    if (typeof value !== 'number') {
+      return [value, name];
+    }
+    
+    if (name === 'stdDev') {
+      return [`±${value.toFixed(1)}%`, 'Standard Deviation'];
+    }
+    
+    if (typeof name === 'string') {
+      return [`${value.toFixed(1)}%`, name.charAt(0).toUpperCase() + name.slice(1)];
+    }
+    
+    return [`${value.toFixed(1)}%`, name];
+  };
   
   return (
     <Card className="p-4 md:p-6 cyber-card">
@@ -130,12 +148,7 @@ const AdvancedMetricsDisplay: React.FC<AdvancedMetricsDisplayProps> = ({ advance
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis unit="%" domain={[0, 100]} />
-                <Tooltip 
-                  formatter={(value, name) => {
-                    if (name === 'stdDev') return [`±${value.toFixed(1)}%`, 'Standard Deviation'];
-                    return [`${value.toFixed(1)}%`, name.charAt(0).toUpperCase() + name.slice(1)];
-                  }}
-                />
+                <Tooltip formatter={customTooltipFormatter} />
                 <Legend />
                 <Bar dataKey="mean" fill="#22c55e" name="Mean">
                   <ErrorBar dataKey="stdDev" width={4} strokeWidth={2} stroke="#ef4444" direction="y" />
