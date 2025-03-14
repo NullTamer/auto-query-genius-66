@@ -53,7 +53,7 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
 
   return (
     <div className="space-y-6">
-      <Alert variant="info" className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+      <Alert variant="default" className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
         <Info className="h-4 w-4" />
         <AlertTitle>School Project Mode</AlertTitle>
         <AlertDescription>
