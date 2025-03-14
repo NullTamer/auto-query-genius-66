@@ -6,8 +6,8 @@ import { runEvaluation } from "./evaluationService";
 import FileUploadSection from "./FileUploadSection";
 import DatasetPreview from "./DatasetPreview";
 import FormatDocumentation from "./FormatDocumentation";
-import { AlertTriangle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle, Info } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface EvaluationUploaderProps {
   onDataLoaded: (data: EvaluationDataItem[]) => void;
@@ -38,7 +38,7 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
     try {
       // Show a warning if dataset is large
       if (dataItems.length > 10) {
-        toast.info(`Processing ${dataItems.length} items. This may take some time and might use fallback methods for some items.`);
+        toast.info(`Processing ${dataItems.length} items. This may take some time.`);
       }
       
       const results = await runEvaluation(dataItems);
@@ -53,6 +53,15 @@ const EvaluationUploader: React.FC<EvaluationUploaderProps> = ({
 
   return (
     <div className="space-y-6">
+      <Alert variant="info" className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+        <Info className="h-4 w-4" />
+        <AlertTitle>School Project Mode</AlertTitle>
+        <AlertDescription>
+          Using offline keyword extraction algorithm optimized for academic evaluation. 
+          No paid APIs are required.
+        </AlertDescription>
+      </Alert>
+
       <FileUploadSection 
         onDataLoaded={onDataLoaded}
         isProcessing={isProcessing}
