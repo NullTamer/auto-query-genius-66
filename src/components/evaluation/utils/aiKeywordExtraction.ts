@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { extractBaselineKeywords } from "./baselineAlgorithm";
 
-// Process a job description through our algorithm
+// Process a job description through our actual algorithm
 export const extractKeywordsWithAI = async (description: string): Promise<KeywordItem[]> => {
   try {
     if (!description || typeof description !== 'string') {
@@ -12,17 +12,9 @@ export const extractKeywordsWithAI = async (description: string): Promise<Keywor
       return [];
     }
 
-    // For a school project, using the baseline algorithm as primary method
-    // to avoid requiring paid API keys
-    console.log("Using baseline algorithm for keyword extraction");
-    return extractBaselineKeywords(description);
-
-    // The edge function with Perplexity API is disabled for this school project
-    // If you want to use the AI approach later, uncomment the below code:
-    /*
     console.log("Calling edge function with description length:", description.length);
 
-    // Call our Supabase Edge Function
+    // Call our actual Supabase Edge Function
     const { data, error } = await supabase.functions.invoke('scrape-job-posting', {
       body: { jobDescription: description }
     });
@@ -70,10 +62,24 @@ export const extractKeywordsWithAI = async (description: string): Promise<Keywor
 
     console.log("Extracted keywords with AI:", keywords.length);
     return keywords;
-    */
   } catch (error) {
-    console.error('Error extracting keywords:', error);
-    // Fallback to baseline algorithm
+    console.error('Error extracting keywords with AI:', error);
+
+    // Check for network errors
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Special handling for network errors
+    if (errorMessage.includes('network') || 
+        errorMessage.includes('ERR_BLOCKED_BY_CLIENT') ||
+        errorMessage.includes('fetch') ||
+        errorMessage.includes('blocked')) {
+      
+      // Don't hide network errors - propagate them up so the UI can show appropriate help
+      throw new Error(`Network error: ${errorMessage}`);
+    }
+    
+    // For other errors, fallback to baseline algorithm
+    console.log('Using baseline algorithm as fallback');
     return extractBaselineKeywords(description);
   }
 };
