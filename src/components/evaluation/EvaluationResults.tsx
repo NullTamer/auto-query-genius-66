@@ -7,6 +7,7 @@ import MetricsChart from "./components/MetricsChart";
 import MetricsDisplay from "./components/MetricsDisplay";
 import ItemDetails from "./components/ItemDetails";
 import AdvancedMetricsDisplay from "./components/AdvancedMetricsDisplay";
+import ExportResults from "./components/ExportResults";
 
 interface EvaluationResultsProps {
   results: EvaluationResult;
@@ -57,7 +58,10 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
   if (validPerItemResults.length === 0) {
     return (
       <Card className="p-4 md:p-6 cyber-card">
-        <h3 className="text-lg font-medium mb-4">Overall Performance Metrics</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Overall Performance Metrics</h3>
+          <ExportResults results={results} />
+        </div>
         
         <div className="mb-4">
           <MetricsChart overall={overall} baseline={baseline} />
@@ -81,7 +85,10 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
   return (
     <div className="space-y-6">
       <Card className="p-4 md:p-6 cyber-card">
-        <h3 className="text-lg font-medium mb-4">Overall Performance Metrics</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Overall Performance Metrics</h3>
+          <ExportResults results={results} />
+        </div>
         
         <div className="mb-4">
           <MetricsChart overall={overall} baseline={baseline} />
