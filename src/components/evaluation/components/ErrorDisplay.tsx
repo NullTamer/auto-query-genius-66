@@ -28,16 +28,17 @@ const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
                         error.includes("failed to fetch") ||
                         error.includes("connection");
   
+  // Map our severity to the Alert component's variant prop
   const variant = severity === "error" ? "destructive" : 
-                 severity === "warning" ? "warning" : "default";
+                severity === "warning" ? "warning" : "default";
   
   const bgColor = severity === "error" ? "bg-destructive/10 border-destructive" : 
-                 severity === "warning" ? "bg-warning/10 border-warning" : 
-                 "bg-muted/50 border-muted";
+                severity === "warning" ? "bg-yellow-500/10 border-yellow-500/50" : 
+                "bg-muted/50 border-muted";
   
   return (
     <Alert 
-      variant={variant} 
+      variant={variant as "default" | "destructive" | "warning"} 
       className={cn(bgColor, className)}
     >
       {isNetworkError ? (

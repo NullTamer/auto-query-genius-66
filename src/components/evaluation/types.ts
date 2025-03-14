@@ -28,6 +28,8 @@ export interface EvaluationResult {
     groundTruth: KeywordItem[];
     extractedKeywords: KeywordItem[];
     baselineKeywords: KeywordItem[];
+    error?: string | null;
   }[];
   baseline: MetricsResult;
+  error?: string | null;
 }

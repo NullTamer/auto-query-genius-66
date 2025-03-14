@@ -55,12 +55,10 @@ const ItemDetails: React.FC<ItemDetailsProps> = ({
         <KeywordList 
           title="Ground Truth Keywords" 
           keywords={groundTruth} 
-          emptyMessage="No ground truth keywords available"
         />
         <KeywordList 
           title="AI Extracted Keywords" 
           keywords={extractedKeywords}
-          emptyMessage="No keywords were extracted" 
         />
       </div>
     </Card>
