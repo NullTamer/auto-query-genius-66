@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -48,6 +47,93 @@ async function retryWithBackoff<T>(
   }
   
   throw lastError || new Error('All retry attempts failed')
+}
+
+// Function to extract keywords using Perplexity API
+async function extractKeywordsWithPerplexity(text: string, apiKey: string): Promise<Array<{keyword: string, frequency: number}>> {
+  console.log("Extracting keywords with Perplexity API")
+  
+  const prompt = `
+  You are an expert technical recruiter with deep knowledge of technical skills, technologies, and job requirements.
+  
+  Analyze the job description below and extract the following:
+  1. Technical skills (programming languages, frameworks, tools)
+  2. Required qualifications
+  3. Key responsibilities
+  4. Domain knowledge requirements
+  
+  Return ONLY a JSON array of objects with the format:
+  [{"keyword": "Extracted Term", "frequency": number from 1-5 representing importance/relevance}]
+  
+  - Assign higher frequency (4-5) to critical requirements
+  - Assign medium frequency (3) to important but not critical skills
+  - Assign lower frequency (1-2) to nice-to-have skills
+  - Do not include generic terms like "team player" or "communication skills"
+  - Focus on technical and domain-specific terms
+  - Ensure terms are specific (e.g., "React" instead of just "JavaScript framework")
+  - Limit to maximum 20 most relevant terms
+  
+  Job Description:
+  ${text}
+  `
+  
+  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-sonar-small-128k-online',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a technical skills extraction assistant.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.2,
+      top_p: 0.9,
+      max_tokens: 1000,
+      frequency_penalty: 1,
+      presence_penalty: 0
+    }),
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`Perplexity API error: ${response.status} ${errorText}`)
+    throw new Response(errorText, { status: response.status })
+  }
+  
+  const data = await response.json()
+  console.log("Perplexity API response:", JSON.stringify(data).substring(0, 500) + "...")
+  
+  try {
+    const content = data.choices?.[0]?.message?.content
+    if (!content) {
+      throw new Error("Invalid response format from Perplexity API")
+    }
+    
+    // Extract JSON from the response
+    const jsonMatch = content.match(/\[.*\]/s)
+    if (!jsonMatch) {
+      throw new Error("Could not find JSON array in response")
+    }
+    
+    const cleanJson = jsonMatch[0].trim()
+    const keywords = JSON.parse(cleanJson)
+    
+    console.log(`Extracted ${keywords.length} keywords with Perplexity:`, keywords.slice(0, 5))
+    return keywords
+  } catch (e) {
+    console.error("Failed to parse Perplexity response:", e)
+    console.log("Raw response:", JSON.stringify(data))
+    throw new Error("Failed to parse response from Perplexity")
+  }
 }
 
 // Function to extract keywords from text using Gemini API
@@ -128,19 +214,44 @@ serve(async (req) => {
     console.log("Processing job posting:", jobPostingId ? `ID: ${jobPostingId}` : "New job")
     console.log("Job description length:", jobDescription.length)
     
-    // Get API key from environment
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) {
+    // Try to use Perplexity API first, fall back to Gemini if not available
+    const perplexityApiKey = Deno.env.get('PERPLEXITY_API_KEY')
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
+    
+    if (!perplexityApiKey && !geminiApiKey) {
       return new Response(
-        JSON.stringify({ error: 'Gemini API key not configured' }),
+        JSON.stringify({ error: 'No API keys configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
     
-    // Extract keywords using Gemini API
-    const keywords = await retryWithBackoff(async () => {
-      return await extractKeywordsWithGemini(jobDescription, apiKey)
-    })
+    // Extract keywords using the appropriate API
+    let keywords
+    try {
+      if (perplexityApiKey) {
+        console.log("Using Perplexity API for keyword extraction")
+        keywords = await retryWithBackoff(async () => {
+          return await extractKeywordsWithPerplexity(jobDescription, perplexityApiKey)
+        })
+      } else {
+        console.log("Using Gemini API for keyword extraction")
+        keywords = await retryWithBackoff(async () => {
+          return await extractKeywordsWithGemini(jobDescription, geminiApiKey!)
+        })
+      }
+    } catch (error) {
+      console.error("Error extracting keywords:", error)
+      
+      // If Perplexity failed, try Gemini as fallback
+      if (perplexityApiKey && geminiApiKey) {
+        console.log("Perplexity API failed, trying Gemini API as fallback")
+        keywords = await retryWithBackoff(async () => {
+          return await extractKeywordsWithGemini(jobDescription, geminiApiKey)
+        })
+      } else {
+        throw error
+      }
+    }
     
     console.log(`Extracted ${keywords.length} keywords:`, keywords)
     
