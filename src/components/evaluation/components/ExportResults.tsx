@@ -1,5 +1,4 @@
-
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, BarChart, FileSpreadsheet } from "lucide-react";
 import { EvaluationResult } from "../types";
@@ -11,6 +10,8 @@ interface ExportResultsProps {
 }
 
 const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
+  const [copied, setCopied] = useState(false);
+
   const exportAsJSON = () => {
     if (!results) {
       toast.error("No results to export");
@@ -18,7 +19,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
     }
 
     try {
-      // Create a formatted object with relevant data
       const exportData = {
         overall: results.overall,
         baseline: results.baseline,
@@ -32,10 +32,8 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
         }))
       };
       
-      // Convert to JSON string
       const jsonString = JSON.stringify(exportData, null, 2);
       
-      // Create blob and download
       const blob = new Blob([jsonString], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       
@@ -45,7 +43,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
       document.body.appendChild(a);
       a.click();
       
-      // Cleanup
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
@@ -63,7 +60,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
     }
 
     try {
-      // Create CSV content
       const headers = ["Metric", "Overall", "Baseline"];
       
       const rows = [
@@ -72,7 +68,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
         ["F1 Score", results.overall.f1Score, results.baseline.f1Score]
       ];
       
-      // Add advanced metrics if available
       if (results.advanced) {
         headers.push("Mean", "Median", "StdDev", "Min", "Max");
         
@@ -101,7 +96,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
         );
       }
       
-      // Add per-item data
       const itemRows = results.perItem.map((item, index) => {
         return [
           `Item ${index + 1}`,
@@ -115,18 +109,14 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
         ];
       });
       
-      // Combine all rows
       const allRows = [headers, ...rows, [""], ["Per-Item Results"], ...itemRows];
       
-      // Convert to CSV
       const csvContent = allRows
         .map(row => {
           return row.map(cell => {
-            // Format numbers as percentages with 2 decimal places
             if (typeof cell === 'number') {
               return (cell * 100).toFixed(2) + '%';
             }
-            // Add quotes around strings that contain commas
             if (typeof cell === 'string' && cell.includes(',')) {
               return `"${cell}"`;
             }
@@ -135,7 +125,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
         })
         .join('\n');
       
-      // Create blob and download
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       
@@ -145,7 +134,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
       document.body.appendChild(a);
       a.click();
       
-      // Cleanup
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
@@ -163,7 +151,6 @@ const ExportResults: React.FC<ExportResultsProps> = ({ results }) => {
     }
 
     try {
-      // Generate a simple academic report format
       const overallPrecision = (results.overall.precision * 100).toFixed(2);
       const overallRecall = (results.overall.recall * 100).toFixed(2);
       const overallF1 = (results.overall.f1Score * 100).toFixed(2);
@@ -214,12 +201,12 @@ ${results.advanced ? `
 - **Average Extracted Terms**: ${(results.perItem.reduce((acc, item) => acc + (item.extractedKeywords?.length || 0), 0) / results.perItem.length).toFixed(1)}
 
 ## Discussion
-The implemented algorithm shows ${improvementF1 > 0 ? 'an improvement' : 'a decrease'} of ${Math.abs(Number(improvementF1))}% in F1 score compared to the baseline approach.
-${improvementF1 > 5 ? 'This significant improvement indicates that our approach effectively captures relevant keywords and structures them in a way that balances precision and recall.' : 
+The implemented algorithm shows ${Number(improvementF1) > 0 ? 'an improvement' : 'a decrease'} of ${Math.abs(Number(improvementF1))}% in F1 score compared to the baseline approach.
+${Number(improvementF1) > 5 ? 'This significant improvement indicates that our approach effectively captures relevant keywords and structures them in a way that balances precision and recall.' : 
 'The results suggest that further refinement of the algorithm may be needed to achieve more substantial improvements over the baseline.'}
 
 ## Conclusion
-${improvementF1 > 0 ? 
+${Number(improvementF1) > 0 ? 
 'The evaluation demonstrates that our automated search strategy generation approach outperforms the baseline method in terms of identifying relevant search terms from job descriptions.' :
 'While the current implementation shows promising directions, more sophisticated natural language processing techniques may be required to significantly outperform the baseline method.'}
 
@@ -230,7 +217,6 @@ ${improvementF1 > 0 ?
 4. Incorporate user feedback to improve query relevance
 `;
 
-      // Create blob and download
       const blob = new Blob([reportContent], { type: "text/markdown;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       
@@ -240,7 +226,6 @@ ${improvementF1 > 0 ?
       document.body.appendChild(a);
       a.click();
       
-      // Cleanup
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
