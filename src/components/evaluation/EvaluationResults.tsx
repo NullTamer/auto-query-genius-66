@@ -1,5 +1,5 @@
 
-import React from "react";
+import React, { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EvaluationResult } from "./types";
@@ -8,12 +8,18 @@ import MetricsDisplay from "./components/MetricsDisplay";
 import ItemDetails from "./components/ItemDetails";
 import AdvancedMetricsDisplay from "./components/AdvancedMetricsDisplay";
 import ExportResults from "./components/ExportResults";
+import StatisticalAnalysis from "./components/StatisticalAnalysis";
+import { Button } from "@/components/ui/button";
+import { PieChart, BarChart } from "lucide-react";
+import QueryGeneration from "./components/QueryGeneration";
 
 interface EvaluationResultsProps {
   results: EvaluationResult;
 }
 
 const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
+  const [visualizationType, setVisualizationType] = useState<"chart" | "stats">("chart");
+  
   // Comprehensive validation of results data
   const isValidResults = results && 
     typeof results === 'object' &&
@@ -55,6 +61,18 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
     results.advanced.median && 
     results.advanced.stdDev;
 
+  // Calculate improvement percentage for metrics display
+  const calculateImprovement = (current: number, baseline: number): number => {
+    if (baseline === 0) return current > 0 ? 100 : 0;
+    return ((current - baseline) / baseline) * 100;
+  };
+
+  const improvementMetrics = {
+    precision: calculateImprovement(overall.precision, baseline.precision),
+    recall: calculateImprovement(overall.recall, baseline.recall),
+    f1Score: calculateImprovement(overall.f1Score, baseline.f1Score),
+  };
+
   if (validPerItemResults.length === 0) {
     return (
       <Card className="p-4 md:p-6 cyber-card">
@@ -63,9 +81,38 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
           <ExportResults results={results} />
         </div>
         
-        <div className="mb-4">
-          <MetricsChart overall={overall} baseline={baseline} />
+        <div className="flex justify-end mb-4 gap-2">
+          <Button 
+            variant={visualizationType === "chart" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setVisualizationType("chart")}
+          >
+            <PieChart className="h-4 w-4 mr-1" />
+            Chart View
+          </Button>
+          <Button 
+            variant={visualizationType === "stats" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setVisualizationType("stats")}
+          >
+            <BarChart className="h-4 w-4 mr-1" />
+            Statistical View
+          </Button>
         </div>
+        
+        {visualizationType === "chart" ? (
+          <div className="mb-4">
+            <MetricsChart overall={overall} baseline={baseline} />
+          </div>
+        ) : (
+          <div className="mb-4">
+            <StatisticalAnalysis 
+              overall={overall} 
+              baseline={baseline} 
+              improvement={improvementMetrics}
+            />
+          </div>
+        )}
         
         <MetricsDisplay metrics={overall} />
         
@@ -90,11 +137,48 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
           <ExportResults results={results} />
         </div>
         
-        <div className="mb-4">
-          <MetricsChart overall={overall} baseline={baseline} />
+        <div className="flex justify-end mb-4 gap-2">
+          <Button 
+            variant={visualizationType === "chart" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setVisualizationType("chart")}
+          >
+            <PieChart className="h-4 w-4 mr-1" />
+            Chart View
+          </Button>
+          <Button 
+            variant={visualizationType === "stats" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setVisualizationType("stats")}
+          >
+            <BarChart className="h-4 w-4 mr-1" />
+            Statistical View
+          </Button>
         </div>
         
+        {visualizationType === "chart" ? (
+          <div className="mb-4">
+            <MetricsChart overall={overall} baseline={baseline} />
+          </div>
+        ) : (
+          <div className="mb-4">
+            <StatisticalAnalysis 
+              overall={overall} 
+              baseline={baseline} 
+              improvement={improvementMetrics}
+            />
+          </div>
+        )}
+        
         <MetricsDisplay metrics={overall} />
+        
+        {/* Generated Boolean Query Example */}
+        <div className="mt-6 border-t pt-4">
+          <QueryGeneration 
+            keywords={validPerItemResults[0]?.extractedKeywords || []}
+            baselineKeywords={validPerItemResults[0]?.baselineKeywords || []}
+          />
+        </div>
       </Card>
       
       {hasAdvancedMetrics && (
