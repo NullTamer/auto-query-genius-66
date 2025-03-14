@@ -3,6 +3,7 @@ import { EvaluationDataItem, EvaluationResult } from "./types";
 import { toast } from "sonner";
 import { extractBaselineKeywords } from "./utils/baselineAlgorithm";
 import { calculateMetrics, calculateAverage } from "./utils/metricsCalculation";
+import { calculateAdvancedMetrics } from "./utils/advancedMetricsCalculation";
 import { extractKeywordsWithAI } from "./utils/aiKeywordExtraction";
 
 // Main evaluation function
@@ -178,6 +179,13 @@ export const runEvaluation = async (
     });
   }
 
+  // Get all metrics for advanced calculations
+  const allMetrics = validProcessedItems.map(item => item.metrics || { precision: 0, recall: 0, f1Score: 0 });
+  const allBaselineMetrics = validProcessedItems.map(item => item.baselineMetrics || { precision: 0, recall: 0, f1Score: 0 });
+  
+  // Calculate advanced metrics
+  const advancedMetrics = calculateAdvancedMetrics(allMetrics);
+
   // Calculate overall metrics with more explicit checks
   const precisions = validProcessedItems.map(item => item.metrics?.precision || 0);
   const recalls = validProcessedItems.map(item => item.metrics?.recall || 0);
@@ -199,6 +207,8 @@ export const runEvaluation = async (
     ai: { precision: overallPrecision, recall: overallRecall, f1Score: overallF1 },
     baseline: { precision: baselinePrecision, recall: baselineRecall, f1Score: baselineF1 }
   });
+  
+  console.log("Advanced metrics:", advancedMetrics);
 
   // Return the final results
   return {
@@ -208,6 +218,7 @@ export const runEvaluation = async (
       f1Score: overallF1,
       averageRankCorrelation: 0.45  // Add a non-zero value 
     },
+    advanced: advancedMetrics,
     baseline: {
       precision: baselinePrecision,
       recall: baselineRecall,

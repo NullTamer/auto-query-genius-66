@@ -20,8 +20,17 @@ export interface MetricsResult {
   averageRankCorrelation?: number;
 }
 
+export interface AdvancedMetricsResult {
+  mean: MetricsResult;
+  median: MetricsResult;
+  stdDev: MetricsResult;
+  min: MetricsResult;
+  max: MetricsResult;
+}
+
 export interface EvaluationResult {
   overall: MetricsResult;
+  advanced?: AdvancedMetricsResult;
   perItem: {
     id: string | number;
     metrics: MetricsResult;

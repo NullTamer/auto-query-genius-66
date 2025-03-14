@@ -6,6 +6,7 @@ import { EvaluationResult } from "./types";
 import MetricsChart from "./components/MetricsChart";
 import MetricsDisplay from "./components/MetricsDisplay";
 import ItemDetails from "./components/ItemDetails";
+import AdvancedMetricsDisplay from "./components/AdvancedMetricsDisplay";
 
 interface EvaluationResultsProps {
   results: EvaluationResult;
@@ -46,6 +47,13 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
     Array.isArray(item.extractedKeywords)
   );
 
+  // Check if advanced metrics are available
+  const hasAdvancedMetrics = results.advanced && 
+    typeof results.advanced === 'object' &&
+    results.advanced.mean && 
+    results.advanced.median && 
+    results.advanced.stdDev;
+
   if (validPerItemResults.length === 0) {
     return (
       <Card className="p-4 md:p-6 cyber-card">
@@ -56,6 +64,12 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
         </div>
         
         <MetricsDisplay metrics={overall} />
+        
+        {hasAdvancedMetrics && (
+          <div className="mt-6">
+            <AdvancedMetricsDisplay advancedMetrics={results.advanced!} />
+          </div>
+        )}
         
         <p className="mt-4 text-center text-muted-foreground">
           No valid per-item results available for detailed analysis
@@ -75,6 +89,10 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
         
         <MetricsDisplay metrics={overall} />
       </Card>
+      
+      {hasAdvancedMetrics && (
+        <AdvancedMetricsDisplay advancedMetrics={results.advanced!} />
+      )}
 
       <Tabs defaultValue={validPerItemResults[0]?.id?.toString() || "item0"}>
         <h3 className="text-lg font-medium mb-4">Per-Item Results</h3>
@@ -92,6 +110,7 @@ const EvaluationResults: React.FC<EvaluationResultsProps> = ({ results }) => {
               metrics={item.metrics || { precision: 0, recall: 0, f1Score: 0 }}
               groundTruth={item.groundTruth || []}
               extractedKeywords={item.extractedKeywords || []}
+              error={item.error}
             />
           </TabsContent>
         ))}
