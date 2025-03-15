@@ -1,7 +1,7 @@
 
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Home, Search, User, Settings, FileBadge, Menu, X, HelpCircle } from "lucide-react";
+import { Home, Search, User, Settings, FileBadge, Menu, X, HelpCircle, BarChart2 } from "lucide-react";
 
 const NavigationPane: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -13,6 +13,7 @@ const NavigationPane: React.FC = () => {
     { name: "Search", icon: Search, path: "/search" },
     { name: "Profile", icon: User, path: "/profile" },
     { name: "Resume", icon: FileBadge, path: "/resume" },
+    { name: "Evaluation", icon: BarChart2, path: "/evaluation" },
     { name: "Settings", icon: Settings, path: "/settings" },
     { name: "Help", icon: HelpCircle, path: "/help" },
   ];
